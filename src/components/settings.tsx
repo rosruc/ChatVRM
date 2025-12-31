@@ -61,7 +61,7 @@ export const Settings = ({
   onClickResetSystemPrompt,
   backgroundImage,
   onChangeBackgroundImage,
-  onRestreamTokensUpdate = () => {},
+  onRestreamTokensUpdate = () => { },
   onTokensUpdate,
   onChatMessage,
 }: Props) => {

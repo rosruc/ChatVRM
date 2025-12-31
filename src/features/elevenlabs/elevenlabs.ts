@@ -3,6 +3,9 @@ import { TalkStyle } from "../messages/messages";
 import axios from 'axios';
 import { ElevenLabsClient } from "elevenlabs";
 
+// const BASE_URL = 'http://127.0.0.1:8000';
+const BASE_URL = 'https://p2271cqwerszp3dm-8000.container.x-gpu.com';
+
 
 export async function synthesizeVoice(
   message: string,
@@ -19,14 +22,15 @@ export async function synthesizeVoice(
   // Set the ID of the voice to be used.
   const VOICE_ID = elevenLabsParam.voiceId;
 
+
   console.log('elevenlabs voice_id: ' + VOICE_ID);
 
   // Set options for the API request.
   const options = {
     method: 'POST',
-    url: `https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}`,
+    url: `${BASE_URL}/v1/text-to-speech/${VOICE_ID}`,
     headers: {
-      accept: 'audio/mpeg', // Set the expected response type to audio/mpeg.
+      accept: 'audio/wav', // Set the expected response type to audio/mpeg.
       'content-type': 'application/json', // Set the content type to application/json.
       'xi-api-key': `${API_KEY}`, // Set the API key in the headers.
     },
@@ -40,7 +44,7 @@ export async function synthesizeVoice(
   // @ts-ignore
   const speechDetails = await axios.request(options);
   // Get the binary audio data received from the API response.
-  const data =  speechDetails.data;
+  const data = speechDetails.data;
   // Create a new Blob object from the audio data with MIME type 'audio/mpeg'
   const blob = new Blob([data], { type: 'audio/mpeg' });
   // Create a URL for the blob object
@@ -52,10 +56,11 @@ export async function synthesizeVoice(
 }
 
 export async function getVoices(elevenLabsKey: string) {
-  const client = new ElevenLabsClient({ apiKey: elevenLabsKey });
-  const voices = await client.voices.getAll();
-  console.log(voices);
-  return voices;
+  // const client = new ElevenLabsClient({ apiKey: elevenLabsKey });
+  // const voices = await client.voices.getAll();
+  const voices = await axios.get(`${BASE_URL}/v1/voices`);
+  console.log(voices.data);
+  return voices.data;
   /*
   const response = await axios.get('https://api.elevenlabs.io/v1/voices');
   console.log(response.data);
