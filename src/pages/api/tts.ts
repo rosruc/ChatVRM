@@ -1,27 +1,55 @@
-import fetch from "node-fetch";
 import { synthesizeVoice } from "@/features/elevenlabs/elevenlabs";
-
 import type { NextApiRequest, NextApiResponse } from "next";
-
-type Data = {
-  audio: string;
-};
+import type { Talk } from "@/features/messages/messages";
+import type { ElevenLabsParam } from "@/features/constants/elevenLabsParam";
 
 export default async function handler(
   req: NextApiRequest,
-  res: NextApiResponse<Data>
+  res: NextApiResponse
 ) {
-  // function currently not used
-  throw new Error("Not implemented");
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
 
-  /*
-  const message = req.body.message;
-  const speaker_x = req.body.speakerX;
-  const speaker_y = req.body.speakerY;
-  const style = req.body.style;
+  try {
+    const {
+      talk,
+      apiKey,
+      elevenLabsParam,
+    }: {
+      talk: Talk;
+      apiKey: string;
+      elevenLabsParam: ElevenLabsParam;
+    } = req.body;
 
-  const voice = await synthesizeVoice(message, speaker_x, speaker_y, style);
+    if (!talk || !apiKey || !elevenLabsParam) {
+      return res.status(400).json({ error: "Missing required parameters" });
+    }
 
-  res.status(200).json(voice);
-  */
+    // Fetch audio using existing synthesizeVoice function
+    const ttsVoice = await synthesizeVoice(
+      talk.message,
+      talk.speakerX,
+      talk.speakerY,
+      talk.style,
+      apiKey,
+      elevenLabsParam
+    );
+
+    const url = ttsVoice.audio;
+    if (!url) {
+      return res.status(500).json({ error: "Failed to generate audio" });
+    }
+
+    // Fetch the audio from the URL and return as buffer
+    const audioResponse = await fetch(url);
+    const audioBuffer = await audioResponse.arrayBuffer();
+
+    // Return audio buffer
+    res.setHeader("Content-Type", "audio/mpeg");
+    res.status(200).send(Buffer.from(audioBuffer));
+  } catch (error) {
+    console.error("TTS API error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
 }
