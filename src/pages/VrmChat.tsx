@@ -3,8 +3,10 @@ import VrmViewer from "@/components/vrmViewer";
 import { ViewerContext } from "@/features/vrmViewer/viewerContext";
 import {
   Message,
-  textsToScreenplay,
+  textToScreenplay,
   Screenplay,
+  splitSentence,
+  splitSentenceWithTags,
 } from "@/features/messages/messages";
 import { speakCharacter } from "@/features/messages/speakCharacter";
 import { MessageInputContainer } from "@/components/messageInputContainer";
@@ -212,14 +214,14 @@ export default function VrmChat() {
         ...messageLog.slice(-5),
       ]);
 
-      let localOpenRouterKey = openRouterKey;
-      if (!localOpenRouterKey) {
-        // fallback to free key for users to try things out
-        localOpenRouterKey = process.env.NEXT_PUBLIC_OPENROUTER_API_KEY!;
-      }
+      // let localOpenRouterKey = openRouterKey;
+      // if (!localOpenRouterKey) {
+      //   // fallback to free key for users to try things out
+      //   localOpenRouterKey = process.env.NEXT_PUBLIC_OPENROUTER_API_KEY!;
+      // }
 
-      // Call the API endpoint instead of getChatResponseStream directly
-      const response = await fetch("/api/chat-stream", {
+      // Call the non-streaming API endpoint to get chat message
+      const response = await fetch("/api/chat", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -235,89 +237,73 @@ export default function VrmChat() {
         return;
       }
 
-      const stream = response.body;
-      if (stream == null) {
-        setChatProcessing(false);
-        return;
-      }
-
-      const reader = stream.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let fullMessage = "";
-
+      // split chate message into sentences and process each sentence for tts & motion, lipsync, expression
       try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
+        const data = await response.json();
+        const fullMessage = data.content || ("" as string);
+        console.log("fullMessage", fullMessage);
 
-          const decodedValue = decoder.decode(value, { stream: true });
-          buffer += decodedValue;
-          fullMessage += decodedValue;
+        // Update the assistant message display
+        setAssistantMessage(fullMessage.trimStart());
+        console.log("assistantMessage", assistantMessage);
 
-          // 实时更新显示的消息（去除开头的空白和换行）
-          const displayMessage = fullMessage.trimStart();
-          setAssistantMessage(displayMessage);
+        // const aiTalks = textsToScreenplay(
+        //   [
+        //     fullMessage.trimStart() +
+        //       "[neutral]你来了，把今天的报表给我看看" +
+        //       "[story]柳如烟接过报表，坐在真皮办公椅上翻开查看，修长的双腿交叠在一起，黑色丝袜包裹的小腿轻轻晃动",
+        //   ],
+        //   koeiroParam
+        // );
 
-          // 检测完整句子（以标点符号结尾）
-          const sentenceMatch = buffer.match(
-            /^(.+?[。．！？\n.!?]|.{10,}[、,])/
-          );
-          if (sentenceMatch) {
-            const sentence = sentenceMatch[0].trim();
+        // console.log("aiTalks", aiTalks);
 
-            // 移除已处理的句子
-            buffer = buffer.slice(sentenceMatch[0].length).trimStart();
+        // for (const aiTalk of aiTalks) {
+        //   handleSpeakAi(aiTalk, elevenLabsKey, elevenLabsParam);
+        // }
 
-            // 跳过空句子或只有标点的句子
-            if (
-              !sentence ||
-              /^[\s\[\(\{「［（【『〈《〔｛«‹〘〚〛〙›»〕》〉』】）］」\}\)\]]+$/.test(
-                sentence
-              )
-            ) {
-              continue;
-            }
+        // Split the complete message into sentences
+        const sentences = splitSentenceWithTags(fullMessage.trimStart());
+        // "[neutral]你来了，把今天的报表给我看看" +
+        //   "[story]柳如烟接过报表，坐在真皮办公椅上翻开查看，修长的双腿交叠在一起，黑色丝袜包裹的小腿轻轻晃动";
+        console.log("sentences", sentences);
 
-            // textsToScreenplay 会自动处理 [neutral] 等标签
-            const aiTalks = textsToScreenplay([sentence], koeiroParam);
-            if (aiTalks[0]) {
-              handleSpeakAi(aiTalks[0], elevenLabsKey, elevenLabsParam);
-            }
-          }
-        }
+        // Process each sentence into screenplays and speak
+        for (let i = 0; i < sentences.length; i++) {
+          const sentence = sentences[i];
+          const trimmedSentence = sentence.trim();
 
-        // 处理剩余的未完成句子
-        if (buffer.trim()) {
-          const remainingSentence = buffer.trim();
+          // Skip empty sentences or sentences with only punctuation/brackets
           if (
-            remainingSentence &&
-            !/^[\s\[\(\{「［（【『〈《〔｛«‹〘〚〛〙›»〕》〉』】）］」\}\)\]]+$/.test(
-              remainingSentence
+            !trimmedSentence ||
+            /^[\s\[\(\{「［（【『〈《〔｛«‹〘〚〛〙›»〕》〉』】）］」\}\)\]]+$/.test(
+              trimmedSentence
             )
           ) {
-            const aiTalks = textsToScreenplay([remainingSentence], koeiroParam);
-            if (aiTalks[0]) {
-              handleSpeakAi(aiTalks[0], elevenLabsKey, elevenLabsParam);
-            }
+            continue;
+          }
+
+          const aiTalks = textToScreenplay(trimmedSentence, koeiroParam);
+          console.log("aiTalks", aiTalks);
+          for (const aiTalk of aiTalks) {
+            handleSpeakAi(aiTalk, elevenLabsKey, elevenLabsParam);
           }
         }
+
+        // アシスタントの返答をログに追加
+        const finalMessage = fullMessage.trim();
+        console.log("finalMessage", finalMessage);
+        const messageLogAssistant: Message[] = [
+          ...messageLog,
+          { role: "assistant", content: finalMessage },
+        ];
+
+        setChatLog(messageLogAssistant);
+        setChatProcessing(false);
       } catch (e) {
         setChatProcessing(false);
         console.error(e);
-      } finally {
-        reader.releaseLock();
       }
-
-      // アシスタントの返答をログに追加
-      const finalMessage = fullMessage.trim();
-      const messageLogAssistant: Message[] = [
-        ...messageLog,
-        { role: "assistant", content: finalMessage },
-      ];
-
-      setChatLog(messageLogAssistant);
-      setChatProcessing(false);
     },
     [
       systemPrompt,
@@ -327,6 +313,7 @@ export default function VrmChat() {
       elevenLabsKey,
       elevenLabsParam,
       openRouterKey,
+      koeiroParam,
     ]
   );
 
@@ -375,7 +362,7 @@ export default function VrmChat() {
     (e: React.FormEvent) => {
       e.preventDefault();
       if (mockInputText.trim() && !chatProcessing) {
-        const aiTalks = textsToScreenplay([mockInputText.trim()], koeiroParam);
+        const aiTalks = textToScreenplay(mockInputText.trim(), koeiroParam);
 
         // 文ごとに音声を生成 & 再生、返答を表示
         handleSpeakAi(aiTalks[0], elevenLabsKey, elevenLabsParam, () => {

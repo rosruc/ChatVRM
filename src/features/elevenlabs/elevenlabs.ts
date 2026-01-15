@@ -6,6 +6,21 @@ import { ElevenLabsClient } from "elevenlabs";
 // const BASE_URL = 'http://127.0.0.1:8000';
 const BASE_URL = "https://ztt6sde1su9me0za-8000.container.x-gpu.com";
 
+export const mapLabelToVoiceId = (label: string) => {
+  switch (label) {
+    case "neutral":
+      return "bfy-xj";
+    case "happy":
+      return "bfy-xj-happy";
+    case "angry":
+      return "bfy-xj-angry";
+    case "rapture":
+      return "bfy-xj-breathy";
+    default:
+      return "bfy-xj-breathy";
+  }
+};
+
 export async function synthesizeVoice(
   message: string,
   speaker_x: number,
@@ -18,9 +33,9 @@ export async function synthesizeVoice(
   // Do not use directly. Use environment variables.
   const API_KEY = elevenLabsKey;
   // Set the ID of the voice to be used.
-  const VOICE_ID = elevenLabsParam.voiceId;
+  const VOICE_ID = mapLabelToVoiceId(style); //elevenLabsParam.voiceId;
 
-  console.log("elevenlabs voice_id: " + VOICE_ID);
+  console.log("elevenlabs voice_id: ", VOICE_ID);
 
   // Set options for the API request.
   const options = {

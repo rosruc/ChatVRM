@@ -1,6 +1,6 @@
 import { createContext } from "react";
 import { Viewer } from "./viewer";
-import { textsToScreenplay, splitSentence } from "../messages/messages";
+import { textToScreenplay, splitSentence } from "../messages/messages";
 import { DEFAULT_KOEIRO_PARAM } from "../constants/koeiroParam";
 import { DEFAULT_ELEVEN_LABS_PARAM } from "../constants/elevenLabsParam";
 
