@@ -4,7 +4,7 @@ import axios from "axios";
 import { ElevenLabsClient } from "elevenlabs";
 
 // const BASE_URL = 'http://127.0.0.1:8000';
-const BASE_URL = "https://ztt6sde1su9me0za-8000.container.x-gpu.com";
+const BASE_URL = "https://9phv7qet4f4covrg-8000.container.x-gpu.com";
 
 export const mapLabelToVoiceId = (label: string) => {
   switch (label) {
