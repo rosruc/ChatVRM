@@ -7,7 +7,7 @@ export class VRMAnimation {
 
   public humanoidTracks: {
     translation: Map<VRMHumanBoneName, THREE.VectorKeyframeTrack>;
-    rotation: Map<VRMHumanBoneName, THREE.VectorKeyframeTrack>;
+    rotation: Map<VRMHumanBoneName, THREE.QuaternionKeyframeTrack>;
   };
   public expressionTracks: Map<string, THREE.NumberKeyframeTrack>;
   public lookAtTrack: THREE.QuaternionKeyframeTrack | null;
@@ -52,17 +52,25 @@ export class VRMAnimation {
 
     for (const [name, origTrack] of this.humanoidTracks.rotation.entries()) {
       const nodeName = humanoid.getNormalizedBoneNode(name)?.name;
+      if (nodeName == null) continue;
 
-      if (nodeName != null) {
-        const track = new THREE.VectorKeyframeTrack(
-          `${nodeName}.quaternion`,
-          origTrack.times,
-          origTrack.values.map((v, i) =>
-            metaVersion === "0" && i % 2 === 0 ? -v : v
-          )
-        );
-        tracks.push(track);
+      // clone to avoid mutating stored data
+      const track = origTrack.clone();
+
+      // VRM0 coordinate fix: flip x and z components (even indices)
+      if (metaVersion === "0") {
+        const src = track.values as unknown as ArrayLike<number>;
+        const dst = new Float32Array(src.length);
+
+        for (let i = 0; i < src.length; i++) {
+          dst[i] = i % 2 === 0 ? -src[i] : src[i];
+        }
+
+        (track as any).values = dst;
       }
+
+      track.name = `${nodeName}.quaternion`;
+      tracks.push(track);
     }
 
     for (const [name, origTrack] of this.humanoidTracks.translation.entries()) {

@@ -53,10 +53,10 @@ export class Model {
     this.mixer = new THREE.AnimationMixer(vrm.scene);
 
     this.emoteController = new EmoteController(vrm, this._lookAtTargetParent);
-    
+
     // Initialize animation queue for sequential playback
     this._animationQueue = new AnimationQueue(this.mixer, vrm);
-    
+
     // Set default idle animation
     await this._animationQueue.setIdleAnimation(
       "/assets/vrm/animation/bvh/neutral_idle.bvh",
@@ -77,6 +77,20 @@ export class Model {
   }
 
   /**
+   * Stop all animations (animation queue and VRMA)
+   */
+  public stopAllAnimations(): void {
+    // Stop animation queue
+    this._animationQueue?.clear();
+
+    // Stop current VRMA action
+    if (this._currentVRMAAction) {
+      this._currentVRMAAction.stop();
+      this._currentVRMAAction = undefined;
+    }
+  }
+
+  /**
    * VRMアニメーションを読み込む
    *
    * https://github.com/vrm-c/vrm-specification/blob/master/specification/VRMC_vrm_animation-1.0/README.ja.md
@@ -93,15 +107,30 @@ export class Model {
       this._currentVRMAAction = undefined;
     }
 
+    // Stop animation queue to prevent conflicts
+    this._animationQueue?.clear();
+
+    // IMPORTANT: ensure no other actions (e.g. BVH idle) keep blending with VRMA
+    // Blending an always-running idle action with a VRMA often looks like the body is "constrained".
+    mixer.stopAllAction();
+
     const clip = vrmAnimation.createAnimationClip(vrm);
     const action = mixer.clipAction(clip);
+
+    // Properly configure and reset the action
+    action.reset();
+    action.enabled = true;
+    action.setEffectiveWeight(1.0);
+    action.setLoop(THREE.LoopOnce, 1);
+    action.clampWhenFinished = true;
+
     this._currentVRMAAction = action;
     action.play();
   }
 
   /**
    * BVHアニメーションを読み込んで再生する
-   * 
+   *
    * @param url - BVHファイルのURL
    * @param loop - ループ再生するかどうか（デフォルト: false）
    * @returns アニメーションアクション、またはnull（読み込み失敗時）
@@ -115,12 +144,20 @@ export class Model {
       throw new Error("You have to load VRM first");
     }
 
+    // Prevent blending with the idle/queue actions.
+    // Blending BVH clips usually looks like limbs are "constrained".
+    this._animationQueue?.clear();
+    mixer.stopAllAction();
+
     const clip = await loadBVHAnimationFile(url, vrm);
     if (!clip) {
       return null;
     }
 
     const action = mixer.clipAction(clip);
+    action.reset();
+    action.enabled = true;
+    action.setEffectiveWeight(1.0);
     if (loop) {
       action.setLoop(THREE.LoopRepeat, Infinity);
     } else {
@@ -133,7 +170,7 @@ export class Model {
 
   /**
    * 感情に基づいてBVHアニメーションを読み込んで再生する
-   * 
+   *
    * @param emotion - 感情ラベル（例: "happy", "sad", "angry"）
    * @param loop - ループ再生するかどうか（デフォルト: false）
    * @returns アニメーションアクション、またはnull（読み込み失敗時）
@@ -149,7 +186,7 @@ export class Model {
     }
 
     // return this.loadBVHAnimation(bvhPath, loop);
-    
+
     return this.loadBVHAnimation(buildUrl(bvhPath), loop);
   }
 
@@ -284,7 +321,7 @@ export class Model {
       let expression = this.vrm?.expressionManager?.getExpression("JawOpen");
       if (expression) {
         // handle Perfect Sync standard
-        
+
         // @ts-ignore
         this.emoteController?.lipSync("JawOpen", volume);
         // this.emoteController?.lipSync("MouthStretch", 0.4 * volume);

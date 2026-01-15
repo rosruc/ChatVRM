@@ -152,12 +152,16 @@ export class VRMAnimationLoaderPlugin implements GLTFLoaderPlugin {
       defExtension.humanoid.humanBones
     )) {
       const threeNode = threeNodes[node];
-      worldMatrixMap.set(boneName as VRMHumanBoneName, threeNode.matrixWorld);
+      // Snapshot matrices so later mutations won't affect conversion.
+      worldMatrixMap.set(
+        boneName as VRMHumanBoneName,
+        threeNode.matrixWorld.clone()
+      );
 
       if (boneName === "hips") {
         worldMatrixMap.set(
           "hipsParent",
-          threeNode.parent?.matrixWorld ?? MAT4_IDENTITY
+          threeNode.parent?.matrixWorld.clone() ?? MAT4_IDENTITY
         );
       }
     }
@@ -200,35 +204,46 @@ export class VRMAnimationLoaderPlugin implements GLTFLoaderPlugin {
         parentBoneName ??= "hipsParent";
 
         if (path === "translation") {
-          const hipsParentWorldMatrix = worldMatrixMap.get("hipsParent")!;
+          if (boneName !== "hips") {
+            // VRMC_vrm_animation spec: only hips translation is allowed.
+            console.warn(
+              `The loading animation contains a translation track for ${boneName}, which is not permitted in the VRMC_vrm_animation spec. ignoring the track`
+            );
+          } else {
+            const hipsParentWorldMatrix = worldMatrixMap.get("hipsParent")!;
 
-          const trackValues = arrayChunk(origTrack.values, 3).flatMap((v) =>
-            _v3A.fromArray(v).applyMatrix4(hipsParentWorldMatrix).toArray()
-          );
+            const trackValues = arrayChunk(origTrack.values, 3).flatMap((v) =>
+              _v3A.fromArray(v).applyMatrix4(hipsParentWorldMatrix).toArray()
+            );
 
-          const track = origTrack.clone();
-          track.values = new Float32Array(trackValues);
+            const track = origTrack.clone();
+            track.values = new Float32Array(trackValues);
 
-          result.humanoidTracks.translation.set(boneName, track);
+            result.humanoidTracks.translation.set(boneName, track);
+          }
         } else if (path === "rotation") {
-          // a  = p^-1 * a' * p * c
-          // a' = p * p^-1 * a' * p * c * c^-1 * p^-1
-          //    = p * a * c^-1 * p^-1
-
           const worldMatrix = worldMatrixMap.get(boneName)!;
           const parentWorldMatrix = worldMatrixMap.get(parentBoneName)!;
 
-          _quatA.setFromRotationMatrix(worldMatrix).normalize().invert();
-          _quatB.setFromRotationMatrix(parentWorldMatrix).normalize();
+          // Match Pixiv's official conversion:
+          // q' = parentRestWorld * q * inv(boneRestWorld)
+          worldMatrix.decompose(_v3A, _quatA, _v3A);
+          _quatA.invert();
+
+          parentWorldMatrix.decompose(_v3A, _quatB, _v3A);
 
           const trackValues = arrayChunk(origTrack.values, 4).flatMap((q) =>
-            _quatC.fromArray(q).premultiply(_quatB).multiply(_quatA).toArray()
+            _quatC
+              .fromArray(q as any)
+              .premultiply(_quatB)
+              .multiply(_quatA)
+              .toArray()
           );
 
           const track = origTrack.clone();
           track.values = new Float32Array(trackValues);
 
-          result.humanoidTracks.rotation.set(boneName, track);
+          result.humanoidTracks.rotation.set(boneName, track as any);
         } else {
           throw new Error(`Invalid path "${path}"`);
         }
