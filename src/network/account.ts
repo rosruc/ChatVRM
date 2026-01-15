@@ -91,22 +91,17 @@ export const initializeProgram = async (components: NetworkComponents) => {
       program.programId
     )[0];
     let account = await connection.getAccountInfo(playerPda);
-    // @ts-ignore
     if (!account || !account.data || account.data.length === 0) {
       console.log("Player account not found, creating new one...");
       const tx = await program.methods.initialize().rpc();
       console.log("User initialized with tx:", tx);
     } else {
-      const player = program.coder.accounts.decode("player", account.data);
+      const player = program.coder.accounts.decode(
+        "player",
+        account.data
+      ) as PlayerAccount;
       console.log("Player account:", player);
-      setComponent(components.PlayerAccount, SOURCE, {
-        playerPda: playerPda.toBase58(),
-        lastResult: player.lastResult,
-        accumResult: player.accumResult,
-        rollCount: player.rollCount,
-        maxRollCount: player.maxRollCount,
-        sessionActive: player.sessionActive,
-      });
+      setPlayerAccountComponent(components, playerPda.toBase58(), player);
     }
 
     // // Subscribe to account changes
@@ -115,21 +110,13 @@ export const initializeProgram = async (components: NetworkComponents) => {
     // }
     const subscriptionAccountChange = connection.onAccountChange(
       playerPda,
-      // @ts-ignore
       (accountInfo) => {
         const player = program.coder.accounts.decode(
           "player",
           accountInfo.data
-        );
+        ) as PlayerAccount;
         console.log("Subscription Player account changed:", player);
-        setComponent(components.PlayerAccount, SOURCE, {
-          playerPda: playerPda.toBase58(),
-          lastResult: player.lastResult,
-          accumResult: player.accumResult,
-          rollCount: player.rollCount,
-          maxRollCount: player.maxRollCount,
-          sessionActive: player.sessionActive,
-        });
+        setPlayerAccountComponent(components, playerPda.toBase58(), player);
       },
       { commitment: "confirmed" }
     );
@@ -164,6 +151,22 @@ export const initializeProgram = async (components: NetworkComponents) => {
     //   variant: "destructive",
     // });
   }
+};
+
+export const setPlayerAccountComponent = (
+  components: NetworkComponents,
+  playerPda: string,
+  player: PlayerAccount
+) => {
+  const { accumResult } = player;
+  const { PlayerAccount } = components;
+  const prevAccount = getComponentValue(PlayerAccount, SOURCE);
+  // if accum the same, don't update
+  if (!!prevAccount && prevAccount.accumResult === accumResult) return;
+  setComponent(PlayerAccount, SOURCE, {
+    playerPda,
+    ...player,
+  });
 };
 
 // convert game event to chat message

@@ -4,6 +4,7 @@ import Dice from "@/components/dice";
 import { useState } from "react";
 import { useEntityQuery } from "@latticexyz/react";
 import { Has } from "@latticexyz/recs";
+import { PlayerAccount, setPlayerAccountComponent } from "@/network/account";
 
 export default function RollDice() {
   const { components, network } = useMUD();
@@ -16,6 +17,46 @@ export default function RollDice() {
   // const { ChatMessage } = components;
   // const chatMessages = useEntityQuery([Has(ChatMessage)]);
   // console.log("chatMessages", chatMessages);
+
+  const handleStartSession = async () => {
+    try {
+      const tx = await program.methods.startSession(40).rpc({
+        commitment: "confirmed",
+        skipPreflight: false,
+        preflightCommitment: "confirmed",
+      });
+      const { blockhash, lastValidBlockHeight } =
+        await connection.getLatestBlockhash("confirmed");
+      await connection.confirmTransaction(
+        {
+          signature: tx,
+          blockhash,
+          lastValidBlockHeight,
+        },
+        "finalized" // or "finalized" if you want to be extra sure
+      );
+      const account = await connection.getAccountInfo(playerPda);
+      if (account && account.data) {
+        const player = program.coder.accounts.decode(
+          "player",
+          account.data
+        ) as PlayerAccount;
+        console.log("Finalized Player account:", player);
+        setPlayerAccountComponent(components, playerPda.toBase58(), player);
+      }
+      toast({
+        title: "Session Started",
+        description: `TX: ${tx.slice(0, 8)}...`,
+      });
+    } catch (error) {
+      console.error("Error starting session:", error);
+      toast({
+        title: "Error",
+        description: "Failed to start session",
+        variant: "destructive",
+      });
+    }
+  };
 
   const handleRollDice = async () => {
     try {
@@ -40,14 +81,17 @@ export default function RollDice() {
           blockhash,
           lastValidBlockHeight,
         },
-        "confirmed" // or "finalized" if you want to be extra sure
+        "finalized" // or "finalized" if you want to be extra sure
       );
       console.log("Finalized! Now reading account...");
       const account = await connection.getAccountInfo(playerPda);
       if (account && account.data) {
-        const player = program.coder.accounts.decode("player", account.data);
+        const player = program.coder.accounts.decode(
+          "player",
+          account.data
+        ) as PlayerAccount;
         console.log("Finalized Player account:", player);
-        // setDiceValue(player?.lastResult ?? 0);
+        setPlayerAccountComponent(components, playerPda.toBase58(), player);
       }
 
       toast({
@@ -102,6 +146,13 @@ export default function RollDice() {
           className="px-6 py-3 bg-primary text-primary-foreground rounded-lg font-medium shadow-md hover:bg-primary/90 disabled:opacity-50 transition-colors"
         >
           {isRolling ? "Rolling..." : "Roll Dice"}
+        </button>
+        <button
+          onClick={handleStartSession}
+          disabled={isRolling}
+          className="px-6 py-3 bg-primary text-primary-foreground rounded-lg font-medium shadow-md hover:bg-primary/90 disabled:opacity-50 transition-colors"
+        >
+          {isRolling ? "Starting Session..." : "Start Session"}
         </button>
       </div>
     </div>

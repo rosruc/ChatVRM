@@ -55,11 +55,21 @@ export type SessionEnded = {
   timestamp: number;
 };
 
+export type SessionStarted = {
+  player: PublicKey;
+  payer: PublicKey;
+  won: boolean;
+  accumulatedTotal: number;
+  rollsMade: number;
+  timestamp: number;
+};
+
 export type GameEvent =
   | { type: "diceRollRequested"; data: DiceRollRequested }
   | { type: "diceRollResult"; data: DiceRollResult }
   | { type: "agentTalked"; data: AgentTalked }
-  | { type: "sessionEnded"; data: SessionEnded };
+  | { type: "sessionEnded"; data: SessionEnded }
+  | { type: "sessionStarted"; data: SessionStarted };
 
 /**
  * Maps a parsed Anchor event to a GameEvent type
@@ -111,6 +121,18 @@ function mapEventToGameEvent(
   } else if (eventName === "sessionEnded") {
     return {
       type: "sessionEnded",
+      data: {
+        player: new PublicKey(eventDataObj.player),
+        payer: new PublicKey(eventDataObj.payer),
+        won: eventDataObj.won,
+        accumulatedTotal: eventDataObj.accumulatedTotal,
+        rollsMade: eventDataObj.rollsMade,
+        timestamp: Number(eventDataObj.timestamp),
+      },
+    };
+  } else if (eventName === "sessionStarted") {
+    return {
+      type: "sessionStarted",
       data: {
         player: new PublicKey(eventDataObj.player),
         payer: new PublicKey(eventDataObj.payer),
@@ -229,6 +251,7 @@ export async function pollEvents(
         }
       }
     }
+    console.log("events", events);
 
     // Sort by timestamp (newest first) and return up to limit
     return events.sort((a, b) => {
