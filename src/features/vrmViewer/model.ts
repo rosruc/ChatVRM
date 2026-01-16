@@ -148,13 +148,6 @@ export class Model {
     // Ensure finished actions don't freeze the model at the last frame.
     this._stopActionWithFade(fromAction, fadeSeconds);
   }
-
-  private _beginNewBodyAction(): void {
-    // Keep idle running at weight 0 so it doesn't constrain the motion.
-    // Motion actions will be started after this.
-    this._duckIdle();
-  }
-
   private _cancelBodyTimersAndWaiters(): void {
     this._clearActionWaiter();
     if (this._stopTimeoutId) {
@@ -198,17 +191,6 @@ export class Model {
       this._currentVRMAAction.stop();
       this._currentVRMAAction = undefined;
     }
-  }
-
-  private _playIdleIfPossible(): void {
-    if (!this._idleAction) return;
-    if (this._currentBVHAction || this._currentVRMAAction) return;
-
-    // Always restart idle here because it might still be "running" at weight=0
-    // after fades; restarting is the simplest way to guarantee the pose.
-    this._idleAction.enabled = true;
-    this._idleAction.setEffectiveWeight(1.0);
-    this._idleAction.reset().fadeIn(0.5).play();
   }
 
   private async _setIdleAnimation(
@@ -307,7 +289,10 @@ export class Model {
    *
    * https://github.com/vrm-c/vrm-specification/blob/master/specification/VRMC_vrm_animation-1.0/README.ja.md
    */
-  public async loadAnimation(vrmAnimation: VRMAnimation): Promise<void> {
+  public async loadAnimation(
+    vrmAnimation: VRMAnimation,
+    loop: boolean = false
+  ): Promise<void> {
     const { vrm, mixer } = this;
     if (vrm == null || mixer == null) {
       throw new Error("You have to load VRM first");
@@ -333,7 +318,10 @@ export class Model {
     action.reset();
     action.enabled = true;
     action.setEffectiveWeight(1.0);
-    action.setLoop(THREE.LoopOnce, 1);
+    action.setLoop(
+      loop ? THREE.LoopRepeat : THREE.LoopOnce,
+      loop ? Infinity : 1
+    );
     action.clampWhenFinished = true;
 
     this._currentVRMAAction = action;
@@ -397,11 +385,10 @@ export class Model {
     action.reset();
     action.enabled = true;
     action.setEffectiveWeight(1.0);
-    if (loop) {
-      action.setLoop(THREE.LoopRepeat, Infinity);
-    } else {
-      action.setLoop(THREE.LoopOnce, 1);
-    }
+    action.setLoop(
+      loop ? THREE.LoopRepeat : THREE.LoopOnce,
+      loop ? Infinity : 1
+    );
     action.play();
 
     // Keep final pose until we crossfade back to idle.

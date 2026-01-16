@@ -139,7 +139,7 @@ export function MotionBVHList() {
 
     try {
       const animationPath = `/assets/vrm/animation/bvh/${filename}`;
-      await viewer.model.loadBVHAnimation(buildUrl(animationPath), false);
+      await viewer.model.loadBVHAnimation(buildUrl(animationPath));
       console.log(`Playing animation: ${filename}`);
     } catch (error) {
       console.error(`Failed to play animation ${filename}:`, error);
@@ -155,9 +155,12 @@ export function MotionBVHList() {
         <span>Motion List ({BVH_ANIMATIONS.length})</span>
         <span className="text-xs">{isOpen ? "▼" : "▶"}</span>
       </button>
-      
+
       {isOpen && (
-        <div className="border-t border-primary flex flex-col" style={{ maxHeight: 'calc(100vh - 120px)' }}>
+        <div
+          className="border-t border-primary flex flex-col"
+          style={{ maxHeight: "calc(100vh - 120px)" }}
+        >
           <div className="p-8 pb-4">
             <input
               type="text"
@@ -167,7 +170,10 @@ export function MotionBVHList() {
               className="w-full px-8 py-4 bg-surface1 hover:bg-surface1-hover rounded-4 text-text-primary typography-14 font-M_PLUS_2"
             />
           </div>
-          <div className="px-8 pb-8 flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
+          <div
+            className="px-8 pb-8 flex-1 overflow-y-auto"
+            style={{ minHeight: 0 }}
+          >
             {filteredAnimations.length === 0 ? (
               <div className="text-text-secondary text-center py-8 typography-14">
                 No animations found

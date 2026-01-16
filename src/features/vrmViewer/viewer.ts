@@ -71,11 +71,11 @@ export class Viewer {
     });
   }
 
-  public async loadVRMA(url: string) {
+  public async loadVRMA(url: string, loop: boolean = false) {
     const vrma = await loadVRMAnimation(buildUrl(url));
     if (vrma) {
       // Let Model handle transitions (idle -> motion, motion -> motion, motion -> idle)
-      await this.model?.loadAnimation(vrma);
+      await this.model?.loadAnimation(vrma, loop);
     }
   }
 
