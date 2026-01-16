@@ -6,22 +6,24 @@ export function ExpressionList() {
   const [expressions, setExpressions] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [isOpen, setIsOpen] = useState(false);
-  const [expressionValues, setExpressionValues] = useState<{ [key: string]: number }>({});
+  const [expressionValues, setExpressionValues] = useState<{
+    [key: string]: number;
+  }>({});
 
   // Update expressions when VRM model is loaded
   useEffect(() => {
     if (viewer.model?.vrm?.expressionManager) {
       const manager = viewer.model.vrm.expressionManager;
-      
+
       // Get all available expression names
       const expressionNames = Object.keys(manager.expressionMap || {});
-      
+
       console.log("Found expressions:", expressionNames);
       console.log("Expression manager:", manager);
-      
+
       const sortedExpressions = expressionNames.sort();
       setExpressions(sortedExpressions);
-      
+
       // Initialize expression values
       const initialValues: { [key: string]: number } = {};
       sortedExpressions.forEach((name) => {
@@ -48,10 +50,10 @@ export function ExpressionList() {
     try {
       // Set the expression value
       manager.setValue(name, value);
-      
+
       // Update the expression manager
       manager.update();
-      
+
       setExpressionValues((prev) => ({ ...prev, [name]: value }));
     } catch (error) {
       console.error(`Failed to set expression ${name}:`, error);
@@ -69,9 +71,9 @@ export function ExpressionList() {
         console.error(`Failed to reset expression ${name}:`, error);
       }
     });
-    
+
     manager.update();
-    
+
     const resetValues: { [key: string]: number } = {};
     expressions.forEach((name) => {
       resetValues[name] = 0;
@@ -79,8 +81,23 @@ export function ExpressionList() {
     setExpressionValues(resetValues);
   };
 
+  const handlePlayExpression = (name: string) => {
+    if (!viewer.model?.emoteController) return;
+
+    viewer.model.emoteController.playExpressionSineWave(name, {
+      durationSec: 0.8,
+      minWeight: 0,
+      maxWeight: 1,
+      cycles: -1,
+      disableAutoBlink: true,
+    });
+  };
+
   return (
-    <div className="fixed top-4 left-4 z-20 bg-base border-2 border-primary rounded-8 shadow-lg max-w-xs w-80" style={{ marginTop: expressions.length > 0 ? '320px' : '60px' }}>
+    <div
+      className="fixed top-4 left-4 z-20 bg-base border-2 border-primary rounded-8 shadow-lg max-w-xs w-80"
+      style={{ marginTop: expressions.length > 0 ? "120px" : "60px" }}
+    >
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="w-full px-12 py-8 text-left font-bold text-text-primary hover:bg-surface1-hover rounded-t-8 flex items-center justify-between"
@@ -88,12 +105,17 @@ export function ExpressionList() {
         <span>Expressions ({expressions.length})</span>
         <span className="text-xs">{isOpen ? "▼" : "▶"}</span>
       </button>
-      
+
       {isOpen && (
-        <div className="border-t border-primary flex flex-col" style={{ maxHeight: 'calc(100vh - 400px)' }}>
+        <div
+          className="border-t border-primary flex flex-col"
+          style={{ maxHeight: "calc(100vh - 400px)" }}
+        >
           {expressions.length === 0 ? (
             <div className="p-8 text-text-secondary text-center typography-14">
-              {viewer.model?.vrm ? "No expressions found" : "Load a VRM model first"}
+              {viewer.model?.vrm
+                ? "No expressions found"
+                : "Load a VRM model first"}
             </div>
           ) : (
             <>
@@ -113,7 +135,10 @@ export function ExpressionList() {
                   Reset
                 </button>
               </div>
-              <div className="px-8 pb-8 flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
+              <div
+                className="px-8 pb-8 flex-1 overflow-y-auto"
+                style={{ minHeight: 0 }}
+              >
                 {filteredExpressions.length === 0 ? (
                   <div className="text-text-secondary text-center py-8 typography-14">
                     No expressions found
@@ -123,10 +148,21 @@ export function ExpressionList() {
                     {filteredExpressions.map((name) => (
                       <div key={name} className="space-y-1">
                         <div className="flex items-center justify-between">
-                          <span className="text-text-primary typography-12 font-M_PLUS_2 font-semibold">
-                            {name}
-                          </span>
-                          <span className="text-text-secondary typography-10 font-M_PLUS_2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-text-primary typography-12 font-M_PLUS_2 font-semibold truncate">
+                              {name}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handlePlayExpression(name)}
+                              className="px-6 py-2 bg-surface1 hover:bg-surface1-hover active:bg-surface2 rounded-4 text-text-primary typography-10 font-M_PLUS_2 font-bold whitespace-nowrap"
+                              title="Play a 0→1→0 sine-wave pulse"
+                              disabled={!viewer.model?.emoteController}
+                            >
+                              Play
+                            </button>
+                          </div>
+                          <span className="text-text-secondary typography-10 font-M_PLUS_2 whitespace-nowrap">
                             {((expressionValues[name] ?? 0) * 100).toFixed(0)}%
                           </span>
                         </div>

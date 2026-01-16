@@ -17,6 +17,19 @@ export class EmoteController {
     this._expressionController.playEmotion(preset);
   }
 
+  public playExpressionSineWave(
+    expressionName: VRMExpressionPresetName | string,
+    options: {
+      durationSec?: number;
+      minWeight?: number;
+      maxWeight?: number;
+      cycles?: number;
+      disableAutoBlink?: boolean;
+    } = {}
+  ) {
+    this._expressionController.playExpressionSineWave(expressionName, options);
+  }
+
   public lipSync(preset: VRMExpressionPresetName, value: number) {
     this._expressionController.lipSync(preset, value);
   }
