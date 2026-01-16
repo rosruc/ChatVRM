@@ -62,8 +62,7 @@ export class Viewer {
       // Load and play neutral BVH animation in loop
       // await this.model.loadBVHAnimationForEmotion('neutral', true);
 
-      // Idle animation is now handled by AnimationQueue in Model.loadVRM()
-      // Animation queue automatically plays idle animation when queue is empty
+      // Idle animation is handled by Model (default BVH idle in loadVRM)
 
       // HACK: アニメーションの原点がずれているので再生後にカメラ位置を調整する
       requestAnimationFrame(() => {
@@ -75,9 +74,7 @@ export class Viewer {
   public async loadVRMA(url: string) {
     const vrma = await loadVRMAnimation(buildUrl(url));
     if (vrma) {
-      // Stop animation queue to prevent conflicts
-      this.model?.stopAllAnimations();
-      // Load and play VRMA animation
+      // Let Model handle transitions (idle -> motion, motion -> motion, motion -> idle)
       await this.model?.loadAnimation(vrma);
     }
   }
