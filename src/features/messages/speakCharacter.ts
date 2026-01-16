@@ -60,7 +60,8 @@ export const speakCharacter = createSpeakCharacter();
 export const fetchAudio = async (
   talk: Talk,
   elevenLabsKey: string,
-  elevenLabsParam: ElevenLabsParam
+  elevenLabsParam: ElevenLabsParam,
+  saveToFile: boolean = true
 ): Promise<ArrayBuffer> => {
   const response = await fetch("/api/tts", {
     method: "POST",
@@ -79,5 +80,24 @@ export const fetchAudio = async (
   }
 
   const buffer = await response.arrayBuffer();
+
+  // Save audio to local file if requested
+  if (saveToFile) {
+    const blob = new Blob([buffer], { type: "audio/mpeg" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    // Generate filename with timestamp and first few words of the message
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const messagePreview = talk.message
+      .substring(0, 20)
+      .replace(/[^a-z0-9]/gi, "_");
+    a.download = `tts_${timestamp}_${messagePreview}.mp3`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
   return buffer;
 };
