@@ -58,11 +58,11 @@ export class Viewer {
 
       // const vrma = await loadVRMAnimation(buildUrl("/idle_loop. vrma"));
       // if (vrma) this.model.loadAnimation(vrma);
-      
+
       // Load and play neutral BVH animation in loop
       // await this.model.loadBVHAnimationForEmotion('neutral', true);
 
-            // Idle animation is now handled by AnimationQueue in Model.loadVRM()
+      // Idle animation is now handled by AnimationQueue in Model.loadVRM()
       // Animation queue automatically plays idle animation when queue is empty
 
       // HACK: アニメーションの原点がずれているので再生後にカメラ位置を調整する
@@ -72,10 +72,13 @@ export class Viewer {
     });
   }
 
-  public async loadVRMA(url: string) { 
+  public async loadVRMA(url: string) {
     const vrma = await loadVRMAnimation(buildUrl(url));
     if (vrma) {
-      this.model?.loadAnimation(vrma);
+      // Stop animation queue to prevent conflicts
+      this.model?.stopAllAnimations();
+      // Load and play VRMA animation
+      await this.model?.loadAnimation(vrma);
     }
   }
 
