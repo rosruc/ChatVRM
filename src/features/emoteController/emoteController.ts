@@ -17,6 +17,16 @@ export class EmoteController {
     this._expressionController.playEmotion(preset);
   }
 
+  public playEmote(
+    preset: VRMExpressionPresetName,
+    options: {
+      weight?: number;
+      durationSec?: number;
+    } = {}
+  ) {
+    this._expressionController.playEmote(preset, options);
+  }
+
   public playExpressionSineWave(
     expressionName: VRMExpressionPresetName | string,
     options: {

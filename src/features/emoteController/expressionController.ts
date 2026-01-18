@@ -23,6 +23,14 @@ export class ExpressionController {
     value: number;
   } | null;
 
+  private _moodPreset: VRMExpressionPresetName = "neutral";
+  private _emotePreset: VRMExpressionPresetName | null = null;
+  private _emoteWeight: number = 0;
+  private _emoteTimeoutId: ReturnType<typeof setTimeout> | null = null;
+
+  private _emotionCurrents = new Map<string, number>();
+  private _autoBlinkEnabled: boolean = true;
+
   private _expressionAnimationRafId: number | null = null;
   private _expressionAnimationToken = 0;
   private _expressionAnimationRestoresAutoBlink: boolean | null = null;
@@ -45,23 +53,44 @@ export class ExpressionController {
   }
 
   public playEmotion(preset: VRMExpressionPresetName) {
-    this.stopExpressionAnimation();
-
-    if (this._currentEmotion != "neutral") {
-      this._expressionManager?.setValue(this._currentEmotion, 0);
-    }
-
-    if (preset == "neutral") {
-      this._autoBlink?.setEnable(true);
-      this._currentEmotion = preset;
-      return;
-    }
-
-    const t = this._autoBlink?.setEnable(false) || 0;
+    // Backward-compatible: treat playEmotion as setting the base/mood layer.
+    this._moodPreset = preset;
     this._currentEmotion = preset;
-    setTimeout(() => {
-      this._expressionManager?.setValue(preset, 1);
-    }, t * 1000);
+
+    if (preset === "neutral") {
+      this._autoBlink?.setEnable(true);
+      this._autoBlinkEnabled = true;
+    } else {
+      this._autoBlink?.setEnable(false);
+      this._autoBlinkEnabled = false;
+    }
+  }
+
+  // A lightweight overlay layer (e.g. action reaction) that should not destroy the mood.
+  // It fades out automatically after durationSec.
+  public playEmote(
+    preset: VRMExpressionPresetName,
+    options: {
+      weight?: number;
+      durationSec?: number;
+    } = {}
+  ) {
+    const weight = Math.max(0, Math.min(1, options.weight ?? 1));
+    const durationSec = Math.max(0, options.durationSec ?? 1.2);
+
+    if (this._emoteTimeoutId) {
+      clearTimeout(this._emoteTimeoutId);
+      this._emoteTimeoutId = null;
+    }
+
+    this._emotePreset = preset;
+    this._emoteWeight = weight;
+
+    this._emoteTimeoutId = setTimeout(() => {
+      this._emotePreset = null;
+      this._emoteWeight = 0;
+      this._emoteTimeoutId = null;
+    }, Math.ceil(durationSec * 1000));
   }
 
   public stopExpressionAnimation() {
@@ -215,11 +244,65 @@ export class ExpressionController {
       this._autoBlink.update(delta);
     }
 
+    // --- emotion layers (mood + emote)
+    const manager = this._expressionManager;
+    if (manager) {
+      // Compute per-expression targets.
+      const targets = new Map<string, number>();
+
+      if (this._moodPreset && this._moodPreset !== "neutral") {
+        targets.set(this._moodPreset, 1);
+      }
+      if (this._emotePreset && this._emoteWeight > 0) {
+        const prev = targets.get(this._emotePreset) ?? 0;
+        targets.set(this._emotePreset, Math.min(1, prev + this._emoteWeight));
+      }
+
+      // AutoBlink: disable only when mood/emote is active.
+      const shouldEnableBlink = targets.size === 0;
+      if (shouldEnableBlink !== this._autoBlinkEnabled) {
+        this._autoBlink?.setEnable(shouldEnableBlink);
+        this._autoBlinkEnabled = shouldEnableBlink;
+      }
+
+      // Smoothly approach targets.
+      const tau = 0.12; // seconds (smaller = snappier)
+      const alpha = 1 - Math.exp(-delta / tau);
+
+      // If playExpressionSineWave is running, don't override that expression key.
+      const reservedKey = this._expressionAnimationReset?.expressionName;
+
+      const keys = new Set<string>([
+        ...this._emotionCurrents.keys(),
+        ...targets.keys(),
+      ]);
+      for (const key of keys) {
+        if (reservedKey && key === reservedKey) {
+          continue;
+        }
+
+        const current = this._emotionCurrents.get(key) ?? 0;
+        const target = targets.get(key) ?? 0;
+        const next = current + (target - current) * alpha;
+
+        if (next <= 0.001 && target <= 0.001) {
+          if (current > 0) {
+            manager.setValue(key as any, 0);
+          }
+          this._emotionCurrents.delete(key);
+          continue;
+        }
+
+        this._emotionCurrents.set(key, next);
+        manager.setValue(key as any, Math.max(0, Math.min(1, next)));
+      }
+    }
+
     if (this._currentLipSync) {
-      const weight =
-        this._currentEmotion === "neutral"
-          ? this._currentLipSync.value * 0.5
-          : this._currentLipSync.value * 0.25;
+      const hasEmotion = this._moodPreset !== "neutral" || this._emotePreset;
+      const weight = !hasEmotion
+        ? this._currentLipSync.value * 0.5
+        : this._currentLipSync.value * 0.25;
       this._expressionManager?.setValue(this._currentLipSync.preset, weight);
     }
   }
