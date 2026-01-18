@@ -1,6 +1,5 @@
 import { useContext, useState } from "react";
 import { ViewerContext } from "../features/vrmViewer/viewerContext";
-import { buildUrl } from "@/utils/buildUrl";
 
 // List of all available BVH animation files
 const BVH_ANIMATIONS = [
@@ -139,7 +138,7 @@ export function MotionBVHList() {
 
     try {
       const animationPath = `/assets/vrm/animation/bvh/${filename}`;
-      await viewer.model.loadBVHAnimation(buildUrl(animationPath));
+      await viewer.loadBVH(animationPath, false);
       console.log(`Playing animation: ${filename}`);
     } catch (error) {
       console.error(`Failed to play animation ${filename}:`, error);

@@ -101,7 +101,7 @@ export function ShapeKeyList() {
             // Method 2: Check morphTargetDictionary (standard Three.js)
             else if ((geometry as any).morphTargetDictionary) {
               targetNames = Object.keys(
-                (geometry as any).morphTargetDictionary
+                (geometry as any).morphTargetDictionary,
               );
             }
             // Method 3: Check if morph targets have names
@@ -116,7 +116,7 @@ export function ShapeKeyList() {
               // Ensure morphTargetInfluences is initialized
               if (!mesh.morphTargetInfluences) {
                 mesh.morphTargetInfluences = new Array(
-                  morphTargets.length
+                  morphTargets.length,
                 ).fill(0);
               }
 
@@ -209,7 +209,7 @@ export function ShapeKeyList() {
   }, [viewer.model?.vrm]);
 
   const filteredShapeKeys = shapeKeys.filter((key) =>
-    key.toLowerCase().includes(searchTerm.toLowerCase())
+    key.toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
   const handleShapeKeyValueChange = (key: string, value: number) => {
@@ -352,8 +352,8 @@ export function ShapeKeyList() {
 
   return (
     <div
-      className="fixed right-4 z-20 bg-base border-2 border-primary rounded-8 shadow-lg max-w-xs w-80"
-      style={{ marginTop: shapeKeys.length > 0 ? "120px" : "60px" }}
+      className="fixed left-4 z-20 bg-base border-2 border-primary rounded-8 shadow-lg max-w-xs w-80"
+      style={{ marginTop: "180px" }}
     >
       <button
         onClick={() => setIsOpen(!isOpen)}

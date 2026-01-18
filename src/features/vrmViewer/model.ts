@@ -14,7 +14,6 @@ import { VRMLookAtSmootherLoaderPlugin } from "@/lib/VRMLookAtSmootherLoaderPlug
 import { LipSync } from "../lipSync/lipSync";
 import { EmoteController } from "../emoteController/emoteController";
 import { Screenplay } from "../messages/messages";
-import { getAnimationPath } from "../../lib/VRMAnimation/utils/animationMapping";
 
 /**
  * 3Dキャラクターを管理するクラス
@@ -32,7 +31,6 @@ export class Model {
   private _currentVRMAAction?: THREE.AnimationAction;
 
   private _currentActionFinishedListener?: (e: any) => void;
-  private _resolveCurrentActionPromise?: () => void;
   private _stopTimeoutId?: ReturnType<typeof setTimeout>;
 
   private prevPlayedEmotion: string | null = null;
@@ -40,6 +38,12 @@ export class Model {
   constructor(lookAtTargetParent: THREE.Object3D) {
     this._lookAtTargetParent = lookAtTargetParent;
     this._lipSync = new LipSync(new AudioContext());
+  }
+
+  private _resolvePublicPathOrUrl(url: string): string {
+    // Allow callers to pass either a public asset path ("/assets/...")
+    // or a fully resolved URL.
+    return url.startsWith("/") ? buildUrl(url) : url;
   }
 
   private _resolveEmotionPreset(
@@ -96,7 +100,11 @@ export class Model {
     if (!idle) return;
     idle.enabled = true;
     idle.setEffectiveWeight(1.0);
-    idle.reset();
+    // IMPORTANT: don't reset a running state/baseline action.
+    // Resetting can briefly evaluate the bind pose (T-pose) at time=0.
+    if (!idle.isRunning()) {
+      idle.reset();
+    }
     if (fadeSeconds > 0) {
       idle.fadeIn(fadeSeconds);
     }
@@ -157,11 +165,6 @@ export class Model {
   }
 
   private _clearActionWaiter(): void {
-    if (this._resolveCurrentActionPromise) {
-      this._resolveCurrentActionPromise();
-      this._resolveCurrentActionPromise = undefined;
-    }
-
     if (this._currentActionFinishedListener && this.mixer) {
       this.mixer.removeEventListener(
         "finished",
@@ -185,28 +188,55 @@ export class Model {
     }
 
     if (this._currentVRMAAction) {
-      // VRMA is typically short; stop immediately to avoid pose accumulation.
-      this._currentVRMAAction.enabled = false;
-      this._currentVRMAAction.setEffectiveWeight(0);
-      this._currentVRMAAction.stop();
+      // Fade out VRMA too (mirrors BVH) to avoid a single-frame bind/T-pose flash
+      // when transitioning from a VRMA quirk into a new state motion.
+      this._stopActionWithFade(this._currentVRMAAction, fadeOutSeconds);
       this._currentVRMAAction = undefined;
     }
   }
 
+  /**
+   * Prepare for switching into a new long-lived state motion.
+   * This immediately interrupts any currently playing one-shot body motion
+   * and brings the current baseline back so we don't sit at a clamped pose
+   * while the next state asset is loading.
+   */
+  public beginStateTransition(fadeSeconds: number = 0.12): void {
+    this._interruptBodyAnimations(fadeSeconds);
+    this._ensureIdleRunning();
+
+    const idle = this._idleAction;
+    if (!idle) return;
+
+    // If the baseline is already contributing, don't call fadeIn().
+    // fadeIn() ramps from 0→1 and can briefly expose bind pose during state→state.
+    if (idle.isRunning() && idle.getEffectiveWeight() > 0.01) {
+      idle.enabled = true;
+      idle.setEffectiveWeight(1.0);
+      idle.play();
+      return;
+    }
+
+    this._fadeInIdle(fadeSeconds);
+  }
+
   private async _setIdleAnimation(
     url: string,
-    loop: boolean = true
+    loop: boolean = true,
+    fadeSeconds: number = 0.2
   ): Promise<void> {
     const { vrm, mixer } = this;
     if (vrm == null || mixer == null) return;
 
     this._idleUrl = url;
-    const clip = await loadBVHAnimationFile(buildUrl(url), vrm);
+    const resolvedUrl = this._resolvePublicPathOrUrl(url);
+    const clip = await loadBVHAnimationFile(resolvedUrl, vrm);
     if (!clip) {
       console.warn(`Failed to load idle animation: ${url}`);
       return;
     }
 
+    const prevIdle = this._idleAction;
     const action = mixer.clipAction(clip);
     action.setLoop(
       loop ? THREE.LoopRepeat : THREE.LoopOnce,
@@ -217,7 +247,17 @@ export class Model {
     this._idleAction = action;
 
     // Start idle immediately so we never fall back to bind pose.
-    this._ensureIdleRunning();
+    // If we had a previous idle running, crossfade to avoid popping.
+    if (
+      fadeSeconds > 0 &&
+      prevIdle &&
+      prevIdle !== action &&
+      prevIdle.isRunning()
+    ) {
+      this._crossfadeToAction(prevIdle, action, fadeSeconds);
+    } else {
+      this._ensureIdleRunning();
+    }
   }
 
   public async loadVRM(url: string): Promise<void> {
@@ -289,9 +329,18 @@ export class Model {
    *
    * https://github.com/vrm-c/vrm-specification/blob/master/specification/VRMC_vrm_animation-1.0/README.ja.md
    */
-  public async loadAnimation(
+  public async loadVRMAAnimation(
     vrmAnimation: VRMAnimation,
-    loop: boolean = false
+    loop: boolean = false,
+    options?: {
+      /**
+       * When true, treat this VRMA as a long-lived "state" motion baseline.
+       * One-shots will return to this pose instead of BVH idle.
+       */
+      isState?: boolean;
+      /** Crossfade seconds (state swap only). */
+      fadeSeconds?: number;
+    }
   ): Promise<void> {
     const { vrm, mixer } = this;
     if (vrm == null || mixer == null) {
@@ -322,25 +371,55 @@ export class Model {
       loop ? THREE.LoopRepeat : THREE.LoopOnce,
       loop ? Infinity : 1
     );
-    action.clampWhenFinished = true;
+    action.clampWhenFinished = !loop;
 
+    const fadeSeconds = options?.fadeSeconds ?? 0.2;
+
+    if (options?.isState) {
+      // State motion: replace the baseline (idle) action with this VRMA.
+      // Keep it looping so it remains a stable baseline.
+      action.setLoop(THREE.LoopRepeat, Infinity);
+      action.clampWhenFinished = false;
+
+      const prevIdle = this._idleAction;
+      this._idleAction = action;
+      this._idleUrl = null;
+
+      // Smoothly transition from current action into this new baseline.
+      this._crossfadeToAction(fromAction, action, fadeSeconds);
+
+      // If we had an old baseline that isn't the active-from action, stop it.
+      if (prevIdle && prevIdle !== fromAction && prevIdle !== action) {
+        this._stopActionWithFade(prevIdle, fadeSeconds);
+      }
+      return;
+    }
+
+    // Quirk / one-shot VRMA.
     this._currentVRMAAction = action;
 
-    // Smoothly transition from idle/previous motion into VRMA.
+    // If we're coming from a motion (not idle), make idle non-contributing immediately.
+    if (fromAction !== this._idleAction) {
+      this._duckIdle();
+    }
+
+    // Smoothly transition from baseline/previous motion into VRMA.
     this._crossfadeToAction(fromAction, action, 0.2);
 
-    // Return to idle when the one-shot VRMA finishes.
-    this._clearActionWaiter();
-    const finishedListener = (e: any) => {
-      if (e?.action !== action) return;
-      mixer.removeEventListener("finished", finishedListener as any);
-      if (this._currentVRMAAction === action) {
-        this._currentVRMAAction = undefined;
-        this._returnToIdle(action, 0.2);
-      }
-    };
-    this._currentActionFinishedListener = finishedListener;
-    mixer.addEventListener("finished", finishedListener as any);
+    // Return to baseline when the one-shot VRMA finishes.
+    if (!loop) {
+      this._clearActionWaiter();
+      const finishedListener = (e: any) => {
+        if (e?.action !== action) return;
+        mixer.removeEventListener("finished", finishedListener as any);
+        if (this._currentVRMAAction === action) {
+          this._currentVRMAAction = undefined;
+          this._returnToIdle(action, 0.2);
+        }
+      };
+      this._currentActionFinishedListener = finishedListener;
+      mixer.addEventListener("finished", finishedListener as any);
+    }
   }
 
   /**
@@ -352,14 +431,35 @@ export class Model {
    */
   public async loadBVHAnimation(
     url: string,
-    loop: boolean = false
+    loop: boolean = false,
+    options?: {
+      /**
+       * When true, treat this BVH as a long-lived "state" motion by replacing
+       * the idle BVH baseline instead of playing as a foreground action.
+       */
+      isState?: boolean;
+      /** Crossfade seconds (state swap only). */
+      fadeSeconds?: number;
+    }
   ): Promise<THREE.AnimationAction | null> {
     const { vrm, mixer } = this;
     if (vrm == null || mixer == null) {
       throw new Error("You have to load VRM first");
     }
 
-    const clip = await loadBVHAnimationFile(url, vrm);
+    // State motion: replace idle baseline (what one-shots return to).
+    if (options?.isState) {
+      // Important: switching state should preempt any currently playing quirk.
+      // Otherwise we blend the new baseline underneath while the old quirk keeps
+      // running until it naturally finishes.
+      this.beginStateTransition(options.fadeSeconds ?? 0.12);
+      await this._setIdleAnimation(url, loop, options.fadeSeconds ?? 0.2);
+      return this._idleAction ?? null;
+    }
+
+    const resolvedUrl = this._resolvePublicPathOrUrl(url);
+
+    const clip = await loadBVHAnimationFile(resolvedUrl, vrm);
     if (!clip) {
       return null;
     }
@@ -437,62 +537,21 @@ export class Model {
 
     // return this.loadBVHAnimation(bvhPath, loop);
 
-    return this.loadBVHAnimation(buildUrl(bvhPath), loop);
+    return this.loadBVHAnimation(bvhPath, loop);
   }
 
   /**
-   * 音声を再生し、リップシンクを行う
-   * Also triggers body animations based on screenplay motion/expression
+   * Sets facial expression from screenplay.expression.
+   * Body motion selection is handled by higher-level runtime (not here).
    */
   public async speak(buffer: ArrayBuffer | null, screenplay: Screenplay) {
     const emotionPreset = this._resolveEmotionPreset(screenplay.expression);
 
-    // Play body animation if motion is specified, otherwise use expression-based animation
-    if (screenplay.motion) {
-      // Set expression when animation starts
+    // Apply mood (layered in ExpressionController).
+    // We intentionally do not auto-reset to neutral here; the caller/runtime decides.
+    if (this.prevPlayedEmotion !== emotionPreset) {
       this.emoteController?.playEmotion(emotionPreset);
       this.prevPlayedEmotion = emotionPreset;
-
-      await this.playAnimation(screenplay.motion, {
-        loop: false,
-        fadeIn: 0.3,
-        fadeOut: 0.3,
-        onStart: () => {
-          // Ensure expression is set when animation starts
-          this.emoteController?.playEmotion(emotionPreset);
-          this.prevPlayedEmotion = emotionPreset;
-        },
-        onComplete: () => {
-          // Return to neutral expression after animation completes
-          this.emoteController?.playEmotion("neutral");
-          this.prevPlayedEmotion = "neutral";
-        },
-      });
-    } else if (emotionPreset !== "neutral") {
-      // Set expression when animation starts
-      this.emoteController?.playEmotion(emotionPreset);
-      this.prevPlayedEmotion = emotionPreset;
-
-      // Fallback: play emotion-based animation for non-neutral expressions
-      await this.playAnimation(screenplay.expression, {
-        loop: false,
-        fadeIn: 0.3,
-        fadeOut: 0.3,
-        onStart: () => {
-          // Ensure expression is set when animation starts
-          this.emoteController?.playEmotion(emotionPreset);
-          this.prevPlayedEmotion = emotionPreset;
-        },
-        onComplete: () => {
-          // Return to neutral expression after animation completes
-          this.emoteController?.playEmotion("neutral");
-          this.prevPlayedEmotion = "neutral";
-        },
-      });
-    } else {
-      // For neutral, just set expression without animation
-      this.emoteController?.playEmotion("neutral");
-      this.prevPlayedEmotion = "neutral";
     }
 
     if (!buffer) {
@@ -507,121 +566,7 @@ export class Model {
   }
 
   /**
-   * Play animation with sequencing support
-   * Returns a Promise that resolves when the animation completes
    */
-  public async playAnimation(
-    emotionOrAction: string,
-    options: {
-      loop?: boolean;
-      fadeIn?: number;
-      fadeOut?: number;
-      priority?: number;
-      onStart?: () => void;
-      onComplete?: () => void;
-    } = {}
-  ): Promise<void> {
-    const { vrm, mixer } = this;
-    if (vrm == null || mixer == null) {
-      console.warn("VRM not initialized");
-      return;
-    }
-
-    const animationPath = getAnimationPath(emotionOrAction);
-    if (!animationPath) {
-      console.warn(`No animation found for: ${emotionOrAction}`);
-      return;
-    }
-
-    const fromAction = this._getActiveBodyAction();
-    this._cancelBodyTimersAndWaiters();
-
-    const clip = await loadBVHAnimationFile(buildUrl(animationPath), vrm);
-    if (!clip) {
-      console.warn(`Failed to load animation: ${animationPath}`);
-      return;
-    }
-
-    // Stop any non-primary body action we track (keep idle running).
-    if (this._currentBVHAction && this._currentBVHAction !== fromAction) {
-      this._stopActionWithFade(this._currentBVHAction, 0.05);
-      this._currentBVHAction = undefined;
-    }
-    if (this._currentVRMAAction && this._currentVRMAAction !== fromAction) {
-      this._currentVRMAAction.stop();
-      this._currentVRMAAction = undefined;
-    }
-    if (fromAction !== this._idleAction) {
-      this._duckIdle();
-    }
-
-    const action = mixer.clipAction(clip);
-    action.reset();
-    action.enabled = true;
-    action.setEffectiveWeight(1.0);
-
-    const loop = options.loop ?? false;
-    action.setLoop(
-      loop ? THREE.LoopRepeat : THREE.LoopOnce,
-      loop ? Infinity : 1
-    );
-    action.clampWhenFinished = true;
-
-    this._currentBVHAction = action;
-    options.onStart?.();
-
-    const fadeIn = options.fadeIn ?? 0.3;
-    this._crossfadeToAction(fromAction, action, fadeIn);
-
-    // Looping animations resolve after a small minimum duration.
-    if (loop) {
-      await new Promise((r) => setTimeout(r, 2000));
-      return;
-    }
-
-    const fadeOut = options.fadeOut ?? 0.3;
-
-    await new Promise<void>((resolve) => {
-      const safetyTimeoutMs = 10000;
-      const timeoutId = setTimeout(() => {
-        cleanup();
-        resolve();
-      }, safetyTimeoutMs);
-
-      const cleanup = () => {
-        clearTimeout(timeoutId);
-        if (this._currentActionFinishedListener) {
-          mixer.removeEventListener(
-            "finished",
-            this._currentActionFinishedListener as any
-          );
-          this._currentActionFinishedListener = undefined;
-        }
-        this._resolveCurrentActionPromise = undefined;
-      };
-
-      this._resolveCurrentActionPromise = () => {
-        cleanup();
-        resolve();
-      };
-
-      const finishedListener = (e: any) => {
-        if (e?.action !== action) return;
-        cleanup();
-        resolve();
-      };
-
-      this._currentActionFinishedListener = finishedListener;
-      mixer.addEventListener("finished", finishedListener as any);
-    });
-
-    // Fade back to idle and stop the action (prevents freezing on last frame).
-    if (this._currentBVHAction === action) {
-      this._currentBVHAction = undefined;
-    }
-    this._returnToIdle(action, fadeOut);
-    options.onComplete?.();
-  }
 
   public update(delta: number): void {
     if (this._lipSync) {

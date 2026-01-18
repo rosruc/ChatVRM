@@ -57,7 +57,7 @@ export class Viewer {
       this._scene.add(this.model.vrm.scene);
 
       // const vrma = await loadVRMAnimation(buildUrl("/idle_loop. vrma"));
-      // if (vrma) this.model.loadAnimation(vrma);
+      // if (vrma) this.model.loadVRMAAnimation(vrma);
 
       // Load and play neutral BVH animation in loop
       // await this.model.loadBVHAnimationForEmotion('neutral', true);
@@ -72,10 +72,57 @@ export class Viewer {
   }
 
   public async loadVRMA(url: string, loop: boolean = false) {
-    const vrma = await loadVRMAnimation(buildUrl(url));
+    const resolvedUrl = url.startsWith("/") ? buildUrl(url) : url;
+    const vrma = await loadVRMAnimation(resolvedUrl);
     if (vrma) {
       // Let Model handle transitions (idle -> motion, motion -> motion, motion -> idle)
-      await this.model?.loadAnimation(vrma, loop);
+      await this.model?.loadVRMAAnimation(vrma, loop);
+    }
+  }
+
+  public async loadBVH(url: string, loop: boolean = false) {
+    // Caller can pass a public path ("/assets/...") or a fully resolved URL.
+    // Model handles URL resolving.
+    await this.model?.loadBVHAnimation(url, loop);
+  }
+
+  /**
+   * Set the current long-lived BVH "state motion" (baseline).
+   * This replaces the idle BVH so one-shots return to this pose.
+   */
+  public async setStateBVH(
+    url: string,
+    loop: boolean = true,
+    fadeSeconds: number = 0.2
+  ) {
+    // Preempt any currently playing quirk motion immediately (before loading).
+    this.model?.beginStateTransition(Math.min(0.12, fadeSeconds));
+
+    await this.model?.loadBVHAnimation(url, loop, {
+      isState: true,
+      fadeSeconds,
+    });
+  }
+
+  /**
+   * Set the current long-lived VRMA "state motion" (baseline).
+   * One-shots will return to this pose instead of BVH idle.
+   */
+  public async setStateVRMA(
+    url: string,
+    loop: boolean = true,
+    fadeSeconds: number = 0.2
+  ) {
+    // Preempt any currently playing quirk motion immediately (before loading).
+    this.model?.beginStateTransition(Math.min(0.12, fadeSeconds));
+
+    const resolvedUrl = url.startsWith("/") ? buildUrl(url) : url;
+    const vrma = await loadVRMAnimation(resolvedUrl);
+    if (vrma) {
+      await this.model?.loadVRMAAnimation(vrma, loop, {
+        isState: true,
+        fadeSeconds,
+      });
     }
   }
 
