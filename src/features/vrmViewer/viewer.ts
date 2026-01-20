@@ -93,7 +93,7 @@ export class Viewer {
   public async setStateBVH(
     url: string,
     loop: boolean = true,
-    fadeSeconds: number = 0.2
+    fadeSeconds: number = 0.2,
   ) {
     // Preempt any currently playing quirk motion immediately (before loading).
     this.model?.beginStateTransition(Math.min(0.12, fadeSeconds));
@@ -111,7 +111,7 @@ export class Viewer {
   public async setStateVRMA(
     url: string,
     loop: boolean = true,
-    fadeSeconds: number = 0.2
+    fadeSeconds: number = 0.2,
   ) {
     // Preempt any currently playing quirk motion immediately (before loading).
     this.model?.beginStateTransition(Math.min(0.12, fadeSeconds));
@@ -158,10 +158,15 @@ export class Viewer {
     // camera controls
     this._cameraControls = new OrbitControls(
       this._camera,
-      this._renderer.domElement
+      this._renderer.domElement,
     );
     this._cameraControls.screenSpacePanning = true;
     this._cameraControls.update();
+
+    // If a model already exists (e.g. VRM loaded before setup), rebind look-at to the real camera.
+    if (this.model && this._camera) {
+      this.model.setLookAtTargetParent(this._camera);
+    }
 
     window.addEventListener("resize", () => {
       this.resize();
@@ -182,7 +187,7 @@ export class Viewer {
     this._renderer.setPixelRatio(window.devicePixelRatio);
     this._renderer.setSize(
       parentElement.clientWidth,
-      parentElement.clientHeight
+      parentElement.clientHeight,
     );
 
     if (!this._camera) return;
@@ -202,7 +207,7 @@ export class Viewer {
       this._camera?.position.set(
         this._camera.position.x,
         headWPos.y,
-        this._camera.position.z
+        this._camera.position.z,
       );
       this._cameraControls?.target.set(headWPos.x, headWPos.y, headWPos.z);
       this._cameraControls?.update();
@@ -219,6 +224,13 @@ export class Viewer {
 
     if (this._renderer && this._camera) {
       this._renderer.render(this._scene, this._camera);
+
+      // VRMLookAtSmoother temporarily rotates the head bone for rendering.
+      // Revert it immediately after render so it doesn't accumulate / interfere with animation.
+      const lookAt: any = this.model?.vrm?.lookAt;
+      if (lookAt && typeof lookAt.revertFirstPersonBoneQuat === "function") {
+        lookAt.revertFirstPersonBoneQuat();
+      }
     }
   };
 }

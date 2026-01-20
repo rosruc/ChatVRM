@@ -40,6 +40,11 @@ export class Model {
     this._lipSync = new LipSync(new AudioContext());
   }
 
+  public setLookAtTargetParent(parent: THREE.Object3D) {
+    this._lookAtTargetParent = parent;
+    this.emoteController?.setLookAtCamera(parent);
+  }
+
   private _resolvePublicPathOrUrl(url: string): string {
     // Allow callers to pass either a public asset path ("/assets/...")
     // or a fully resolved URL.
@@ -47,7 +52,7 @@ export class Model {
   }
 
   private _resolveEmotionPreset(
-    emotion: Screenplay["expression"]
+    emotion: Screenplay["expression"],
   ): VRMExpressionPresetName {
     // Map custom / non-standard tags to a real VRM preset.
     // (Keeps EmoteController strict and avoids missing-expression runtime issues.)
@@ -61,7 +66,7 @@ export class Model {
 
   private _stopActionWithFade(
     action: THREE.AnimationAction,
-    fadeOutSeconds: number
+    fadeOutSeconds: number,
   ): void {
     if (fadeOutSeconds > 0) {
       action.fadeOut(fadeOutSeconds);
@@ -124,7 +129,7 @@ export class Model {
   private _crossfadeToAction(
     fromAction: THREE.AnimationAction | null,
     toAction: THREE.AnimationAction,
-    fadeSeconds: number
+    fadeSeconds: number,
   ): void {
     if (fadeSeconds > 0 && fromAction && fromAction.isRunning()) {
       fromAction.crossFadeTo(toAction, fadeSeconds, false);
@@ -147,7 +152,7 @@ export class Model {
 
   private _returnToIdle(
     fromAction: THREE.AnimationAction | null,
-    fadeSeconds: number
+    fadeSeconds: number,
   ): void {
     // Start idle first so we never show bind/T-pose.
     this._fadeInIdle(fadeSeconds);
@@ -168,7 +173,7 @@ export class Model {
     if (this._currentActionFinishedListener && this.mixer) {
       this.mixer.removeEventListener(
         "finished",
-        this._currentActionFinishedListener as any
+        this._currentActionFinishedListener as any,
       );
     }
     this._currentActionFinishedListener = undefined;
@@ -223,7 +228,7 @@ export class Model {
   private async _setIdleAnimation(
     url: string,
     loop: boolean = true,
-    fadeSeconds: number = 0.2
+    fadeSeconds: number = 0.2,
   ): Promise<void> {
     const { vrm, mixer } = this;
     if (vrm == null || mixer == null) return;
@@ -240,7 +245,7 @@ export class Model {
     const action = mixer.clipAction(clip);
     action.setLoop(
       loop ? THREE.LoopRepeat : THREE.LoopOnce,
-      loop ? Infinity : 1
+      loop ? Infinity : 1,
     );
     action.enabled = true;
     action.setEffectiveWeight(1.0);
@@ -266,13 +271,34 @@ export class Model {
       (parser) =>
         new VRMLoaderPlugin(parser, {
           lookAtPlugin: new VRMLookAtSmootherLoaderPlugin(parser),
-        })
+        }),
     );
 
     const gltf = await loader.loadAsync(url);
 
     const vrm = (this.vrm = gltf.userData.vrm);
     vrm.scene.name = "VRMRoot";
+
+    if (!vrm.lookAt) {
+      console.warn(
+        "VRM.lookAt was not created by the loader. Look-at will be disabled.",
+      );
+    } else {
+      // Debug: confirm which lookAt implementation is active and enable debug logs
+      // when using our VRMLookAtSmoother wrapper.
+      const lookAt: any = vrm.lookAt;
+      const ctorName = lookAt?.constructor?.name ?? "(unknown)";
+      console.log("VRM.lookAt attached", {
+        ctorName,
+        hasUserTargetProp: lookAt ? "userTarget" in lookAt : false,
+        hasRevertHook: typeof lookAt?.revertFirstPersonBoneQuat === "function",
+        hasDebugLogFlag: typeof lookAt?.debugLogHeadRotation === "boolean",
+      });
+
+      if (typeof lookAt?.autoUpdate === "boolean") {
+        lookAt.autoUpdate = true;
+      }
+    }
 
     // log all info about vrm, including blend shapes and expressions
     console.log(vrm);
@@ -285,7 +311,7 @@ export class Model {
     // Set default idle animation
     await this._setIdleAnimation(
       "/assets/vrm/animation/bvh/neutral_idle.bvh",
-      true
+      true,
     );
   }
 
@@ -340,7 +366,7 @@ export class Model {
       isState?: boolean;
       /** Crossfade seconds (state swap only). */
       fadeSeconds?: number;
-    }
+    },
   ): Promise<void> {
     const { vrm, mixer } = this;
     if (vrm == null || mixer == null) {
@@ -369,7 +395,7 @@ export class Model {
     action.setEffectiveWeight(1.0);
     action.setLoop(
       loop ? THREE.LoopRepeat : THREE.LoopOnce,
-      loop ? Infinity : 1
+      loop ? Infinity : 1,
     );
     action.clampWhenFinished = !loop;
 
@@ -440,7 +466,7 @@ export class Model {
       isState?: boolean;
       /** Crossfade seconds (state swap only). */
       fadeSeconds?: number;
-    }
+    },
   ): Promise<THREE.AnimationAction | null> {
     const { vrm, mixer } = this;
     if (vrm == null || mixer == null) {
@@ -487,7 +513,7 @@ export class Model {
     action.setEffectiveWeight(1.0);
     action.setLoop(
       loop ? THREE.LoopRepeat : THREE.LoopOnce,
-      loop ? Infinity : 1
+      loop ? Infinity : 1,
     );
     action.play();
 
@@ -527,7 +553,7 @@ export class Model {
    */
   public async loadBVHAnimationForEmotion(
     emotion: string,
-    loop: boolean = false
+    loop: boolean = false,
   ): Promise<THREE.AnimationAction | null> {
     const bvhPath = getBVHPathForEmotion(emotion);
     if (!bvhPath) {
@@ -550,7 +576,9 @@ export class Model {
     // Apply mood (layered in ExpressionController).
     // We intentionally do not auto-reset to neutral here; the caller/runtime decides.
     if (this.prevPlayedEmotion !== emotionPreset) {
-      this.emoteController?.playEmotion(emotionPreset);
+      this.emoteController?.setMood({
+        waves: [{ expressionName: emotionPreset }],
+      });
       this.prevPlayedEmotion = emotionPreset;
     }
 
