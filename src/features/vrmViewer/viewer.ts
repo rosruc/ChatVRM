@@ -3,6 +3,7 @@ import { Model } from "./model";
 import { buildUrl } from "@/utils/buildUrl";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
 import { loadVRMAnimation } from "@/lib/VRMAnimation/loadVRMAnimation";
+import { MOTIONS } from "../characterRuntime/motionCatalog";
 
 /**
  * three.jsを使った3Dビューワー
@@ -84,6 +85,31 @@ export class Viewer {
     // Caller can pass a public path ("/assets/...") or a fully resolved URL.
     // Model handles URL resolving.
     await this.model?.loadBVHAnimation(url, loop);
+  }
+
+  // pass in motion id defined in motionCatalog.ts; either state or quirk; either bvh or vrma
+  public async setMotion(motionId: string) {
+    const isMotionId = (id: string): id is keyof typeof MOTIONS =>
+      id in MOTIONS;
+    if (!isMotionId(motionId)) return;
+
+    const motion = MOTIONS[motionId];
+
+    if (motion.kind === "state") {
+      if (motion.format === "bvh") {
+        await this.setStateBVH(motion.url, motion.loop, 0.2);
+      } else {
+        await this.setStateVRMA(motion.url, motion.loop, 0.2);
+      }
+      return;
+    }
+
+    // one-shot / quirk motion
+    if (motion.format === "bvh") {
+      await this.loadBVH(motion.url, motion.loop ?? false);
+    } else {
+      await this.loadVRMA(motion.url, motion.loop ?? false);
+    }
   }
 
   /**
