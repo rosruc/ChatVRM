@@ -4,6 +4,7 @@ import { useContext, useMemo, useState } from "react";
 import { ViewerContext } from "@/features/vrmViewer/viewerContext";
 import { MOTIONS } from "@/features/characterRuntime/motionCatalog";
 import { VRM, type VRMExpressionPresetName } from "@pixiv/three-vrm";
+import { CUSTOM_EMOTIONS } from "@/features/emoteController/emotions";
 
 const MOODS: VRMExpressionPresetName[] = [
   "neutral",
@@ -23,11 +24,12 @@ export default function VrmControl() {
   const [emoteWeight, setEmoteWeight] = useState(0.35);
   const [emoteDuration, setEmoteDuration] = useState(1.0);
 
-  const [sineKey, setSineKey] = useState<string>("happy");
+  const [sineKey, setSineKey] = useState<VRMExpressionPresetName>("happy");
   const [sineDuration, setSineDuration] = useState(0.8);
   const [sineMin, setSineMin] = useState(0.0);
   const [sineMax, setSineMax] = useState(0.6);
   const [sineCycles, setSineCycles] = useState(1);
+  const [sineQuirkLifetime, setSineQuirkLifetime] = useState(1.0);
 
   const disabled = !model;
 
@@ -67,7 +69,11 @@ export default function VrmControl() {
               <button
                 className="bg-secondary hover:bg-secondary-hover rounded-6 px-8 py-6 text-xs font-bold"
                 disabled={disabled}
-                onClick={() => model?.emoteController?.playEmotion(mood)}
+                onClick={() =>
+                  model?.emoteController?.setMood({
+                    waves: [{ expressionName: mood }],
+                  })
+                }
               >
                 Apply
               </button>
@@ -123,7 +129,7 @@ export default function VrmControl() {
                 className="w-full bg-secondary hover:bg-secondary-hover rounded-6 px-10 py-8 text-xs font-bold"
                 disabled={disabled}
                 onClick={() =>
-                  model?.emoteController?.playEmote(emote, {
+                  model?.emoteController?.playPresetQuirk(emote, {
                     weight: emoteWeight,
                     durationSec: emoteDuration,
                   })
@@ -141,7 +147,9 @@ export default function VrmControl() {
               <input
                 className="flex-1 bg-surface1 rounded-6 px-8 py-6 text-xs"
                 value={sineKey}
-                onChange={(e) => setSineKey(e.target.value)}
+                onChange={(e) =>
+                  setSineKey(e.target.value as VRMExpressionPresetName)
+                }
                 disabled={disabled}
               />
             </div>
@@ -155,6 +163,16 @@ export default function VrmControl() {
                 onChange={(e) => setSineDuration(Number(e.target.value))}
                 disabled={disabled}
                 title="durationSec"
+              />
+              <input
+                type="number"
+                step={0.1}
+                min={0}
+                className="bg-surface1 rounded-6 px-8 py-6 text-xs"
+                value={sineQuirkLifetime}
+                onChange={(e) => setSineQuirkLifetime(Number(e.target.value))}
+                disabled={disabled}
+                title="quirk lifetime sec (0 = clear)"
               />
               <input
                 type="number"
@@ -192,18 +210,32 @@ export default function VrmControl() {
               className="w-full bg-secondary hover:bg-secondary-hover rounded-6 px-10 py-8 text-xs font-bold"
               disabled={disabled}
               onClick={() =>
-                model?.emoteController?.playExpressionSineWave(sineKey, {
-                  durationSec: sineDuration,
-                  minWeight: sineMin,
-                  maxWeight: sineMax,
-                  cycles: sineCycles,
-                })
+                model?.emoteController?.playQuirk(
+                  {
+                    waves: [
+                      {
+                        expressionName: sineKey,
+                        options: {
+                          durationSec: sineDuration,
+                          minWeight: sineMin,
+                          maxWeight: sineMax,
+                          cycles: sineCycles,
+                        },
+                      },
+                    ],
+                  },
+                  { durationSec: sineQuirkLifetime },
+                )
               }
             >
               Play Sine Wave
             </button>
           </div>
         </section>
+
+        <VRMEmotionControl />
+
+        <VRMLookAtControl />
 
         <VRMMotionControl />
 
@@ -215,9 +247,11 @@ export default function VrmControl() {
               if (!model) return;
               await viewer.setStateBVH(
                 "/assets/vrm/animation/bvh/neutral_idle.bvh",
-                true
+                true,
               );
-              model.emoteController?.playEmotion("neutral");
+              model.emoteController?.setMood({
+                waves: [{ expressionName: "neutral" }],
+              });
             }}
           >
             Reset (Idle + Neutral)
@@ -228,15 +262,217 @@ export default function VrmControl() {
   );
 }
 
+export function VRMEmotionControl() {
+  const { viewer } = useContext(ViewerContext);
+  const model = viewer.model;
+
+  const disabled = !model;
+
+  return (
+    <section className="space-y-8">
+      <div className="text-xs font-bold opacity-80">Custom Emotion</div>
+
+      <div className="space-y-6">
+        <div className="text-[11px] opacity-70">Presets</div>
+        <div className="flex flex-wrap gap-6">
+          {CUSTOM_EMOTIONS.map((p) => (
+            <button
+              key={p.id}
+              className="bg-surface1 hover:bg-surface1-hover rounded-6 px-8 py-6 text-xs"
+              disabled={disabled}
+              onClick={() => {
+                model?.emoteController?.setMood(p.emotion);
+              }}
+            >
+              {p.id}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="text-[11px] opacity-70 leading-snug">
+        Mood layer supports combined sine waves (VRM presets only). Schema:{" "}
+        {"{"} waves: [ {"{"} expressionName, options? {"}"} ],
+        autoBlinkDisabled? {"}"}.
+      </div>
+
+      <div className="grid grid-cols-2 gap-8">
+        <button
+          className="bg-secondary hover:bg-secondary-hover rounded-6 px-8 py-6 text-xs font-bold"
+          disabled={disabled}
+          onClick={() =>
+            model?.emoteController?.setMood({
+              waves: [{ expressionName: "neutral" }],
+            })
+          }
+        >
+          Neutral
+        </button>
+      </div>
+    </section>
+  );
+}
+
+export function VRMLookAtControl() {
+  const { viewer } = useContext(ViewerContext);
+  const model = viewer.model;
+
+  const [lookAtAutoUpdate, setLookAtAutoUpdate] = useState(true);
+  const [lookAtYaw, setLookAtYaw] = useState(0);
+  const [lookAtPitch, setLookAtPitch] = useState(0);
+
+  const disabled = !model;
+  return (
+    <div className="pt-8 border-t border-primary/20 space-y-6">
+      <div className="text-xs font-bold opacity-80">LookAt / Eyes</div>
+
+      <label className="flex items-center justify-between gap-8 text-xs opacity-80">
+        <span>lookAt.autoUpdate</span>
+        <input
+          type="checkbox"
+          checked={lookAtAutoUpdate}
+          disabled={disabled}
+          onChange={(e) => {
+            const next = e.target.checked;
+            setLookAtAutoUpdate(next);
+            const lookAt = model?.vrm?.lookAt;
+            if (lookAt) {
+              lookAt.autoUpdate = next;
+            }
+          }}
+        />
+      </label>
+
+      <div className="grid grid-cols-2 gap-8">
+        <div className="space-y-2">
+          <div className="text-[11px] opacity-70">Yaw (deg)</div>
+          <input
+            type="number"
+            step={1}
+            className="w-full bg-surface1 rounded-6 px-8 py-6 text-xs"
+            value={lookAtYaw}
+            disabled={disabled}
+            onChange={(e) => {
+              const next = Number(e.target.value);
+              setLookAtYaw(next);
+              const lookAt = model?.vrm?.lookAt;
+              if (lookAt) {
+                lookAt.autoUpdate = false;
+                setLookAtAutoUpdate(false);
+                lookAt.yaw = next;
+              }
+            }}
+          />
+        </div>
+
+        <div className="space-y-2">
+          <div className="text-[11px] opacity-70">Pitch (deg)</div>
+          <input
+            type="number"
+            step={1}
+            className="w-full bg-surface1 rounded-6 px-8 py-6 text-xs"
+            value={lookAtPitch}
+            disabled={disabled}
+            onChange={(e) => {
+              const next = Number(e.target.value);
+              setLookAtPitch(next);
+              const lookAt = model?.vrm?.lookAt;
+              if (lookAt) {
+                lookAt.autoUpdate = false;
+                setLookAtAutoUpdate(false);
+                lookAt.pitch = next;
+              }
+            }}
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-8">
+        <button
+          className="bg-secondary hover:bg-secondary-hover rounded-6 px-8 py-6 text-xs font-bold"
+          disabled={disabled}
+          onClick={() => {
+            const lookAt = model?.vrm?.lookAt;
+            if (!lookAt) return;
+            lookAt.reset();
+            setLookAtYaw(0);
+            setLookAtPitch(0);
+          }}
+        >
+          Reset LookAt
+        </button>
+        <button
+          className="bg-secondary hover:bg-secondary-hover rounded-6 px-8 py-6 text-xs font-bold"
+          disabled={disabled}
+          onClick={() => {
+            // These keys are used by @pixiv/three-vrm when the model uses the "expression" lookAt applier.
+            const keys = ["lookUp", "lookDown", "lookLeft", "lookRight"];
+            for (const k of keys) {
+              model?.vrm?.expressionManager?.setValue(k as any, 0);
+            }
+            model?.vrm?.expressionManager?.update();
+          }}
+        >
+          Zero Look Expr
+        </button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-8">
+        {(
+          [
+            "lookUp",
+            "lookDown",
+            "lookLeft",
+            "lookRight",
+          ] as unknown as VRMExpressionPresetName[]
+        ).map((k) => (
+          <button
+            key={k}
+            className="bg-secondary hover:bg-secondary-hover rounded-6 px-8 py-6 text-xs font-bold"
+            disabled={disabled}
+            onClick={() =>
+              model?.emoteController?.playQuirk(
+                {
+                  waves: [
+                    {
+                      expressionName: k,
+                      options: {
+                        durationSec: 0.5,
+                        minWeight: 0,
+                        maxWeight: 1,
+                        cycles: 1,
+                      },
+                    },
+                  ],
+                },
+                { durationSec: 0.5 },
+              )
+            }
+            title="(expression-applier models only)"
+          >
+            {k}
+          </button>
+        ))}
+      </div>
+
+      <div className="text-[11px] opacity-60 leading-snug">
+        Note: many models use bone-based lookAt. In that case, use yaw/pitch
+        controls above. For expression-based lookAt, these expression keys are
+        driven internally: lookUp/lookDown/lookLeft/lookRight.
+      </div>
+    </div>
+  );
+}
+
 export function VRMMotionControl() {
   const { viewer } = useContext(ViewerContext);
   const model = viewer.model;
 
   const [customBvhUrl, setCustomBvhUrl] = useState(
-    "/assets/vrm/animation/bvh/action_greeting.bvh"
+    "/assets/vrm/animation/bvh/action_greeting.bvh",
   );
   const [customVrmaUrl, setCustomVrmaUrl] = useState(
-    "/assets/vrm/animation/vrma/LookAround.vrma"
+    "/assets/vrm/animation/vrma/LookAround.vrma",
   );
 
   const { stateMotions, quirkMotions } = useMemo(() => {
@@ -268,7 +504,9 @@ export function VRMMotionControl() {
                   await viewer.setStateVRMA(m.url, true);
                 }
                 if (m.expression?.mood) {
-                  model.emoteController?.playEmotion(m.expression.mood);
+                  model.emoteController?.setMood({
+                    waves: [{ expressionName: m.expression.mood }],
+                  });
                 }
               }}
             >
@@ -289,7 +527,7 @@ export function VRMMotionControl() {
               onClick={async () => {
                 if (!model) return;
                 if (m.expression?.emote) {
-                  model.emoteController?.playEmote(m.expression.emote, {
+                  model.emoteController?.playPresetQuirk(m.expression.emote, {
                     weight: m.expression.emoteWeight,
                     durationSec: m.expression.emoteDurationSec,
                   });

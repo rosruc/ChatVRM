@@ -37,7 +37,7 @@ export function ExpressionList() {
   }, [viewer.model?.vrm]);
 
   const filteredExpressions = expressions.filter((key) =>
-    key.toLowerCase().includes(searchTerm.toLowerCase())
+    key.toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
   const handleExpressionValueChange = (name: string, value: number) => {
@@ -82,15 +82,24 @@ export function ExpressionList() {
   };
 
   const handlePlayExpression = (name: string) => {
-    if (!viewer.model?.emoteController) return;
+    const manager = viewer.model?.vrm?.expressionManager;
+    if (!manager) return;
 
-    viewer.model.emoteController.playExpressionSineWave(name, {
-      durationSec: 0.8,
-      minWeight: 0,
-      maxWeight: 1,
-      cycles: -1,
-      disableAutoBlink: true,
-    });
+    // ExpressionList is for debugging arbitrary model expression keys,
+    try {
+      manager.setValue(name as any, 1);
+      manager.update();
+      setTimeout(() => {
+        try {
+          manager.setValue(name as any, 0);
+          manager.update();
+        } catch {
+          // ignore
+        }
+      }, 800);
+    } catch {
+      // ignore
+    }
   };
 
   return (
