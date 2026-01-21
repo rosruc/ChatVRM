@@ -1,6 +1,6 @@
 import { Message } from "../messages/messages";
 
-const DZMM_API_KEY = "5f9a1587-4076-49d2-88ed-7ea6732722d2"
+const DZMM_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImE4Y2Q1YzY0LTkxMDMtNDUyYi1iYTM4LThhOWI3N2U3ODdkZSIsImV4cCI6MTc3MTM5MTAxNiwianRpIjoiY2JkZjQ4OTUtOGM0MC00OTg0LWFjMTAtMjU1OGNiNWMxMmNmIn0.rFvmcBKeFdAAdend0UVBENeD8O8TnnT-Lh1DC6XBZ8o"
 
 export async function getChatResponseStream(
   messages: Message[],
@@ -25,7 +25,7 @@ export async function getChatResponseStream(
           //model: 'nalang-xl-0826',       // 32K context
 
           // Medium系列 - 性价比之王 ($0.0002/1K tokens)
-          model: 'nalang-medium-0826',   // 32K context
+          model: 'qwen3-32b:latest',   // 32K context
 
           // Turbo系列 - 小模型 ($0.0001/1K tokens)
           //model: 'nalang-turbo-0826',    // 32K context (推荐)
@@ -41,7 +41,7 @@ export async function getChatResponseStream(
         console.log('Request body:', JSON.stringify(requestBody, null, 2));
 
         const response = await fetch(
-          'https://www.gpt4novel.com/api/xiaoshuoai/ext/v1/chat/completions',
+          'http://60.12.103.229:3000/api/chat/completions',
           {
             method: 'POST',
             headers: {

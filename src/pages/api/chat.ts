@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { Message } from "@/features/messages/messages";
 
-const DZMM_API_KEY = "5f9a1587-4076-49d2-88ed-7ea6732722d2";
+const DZMM_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImE4Y2Q1YzY0LTkxMDMtNDUyYi1iYTM4LThhOWI3N2U3ODdkZSIsImV4cCI6MTc3MTM5MTAxNiwianRpIjoiY2JkZjQ4OTUtOGM0MC00OTg0LWFjMTAtMjU1OGNiNWMxMmNmIn0.rFvmcBKeFdAAdend0UVBENeD8O8TnnT-Lh1DC6XBZ8o";
 
 export default async function chatHandler(
   req: NextApiRequest,
@@ -22,9 +22,9 @@ export default async function chatHandler(
   try {
     // Build request body for DZMM API (non-streaming, but API may still return stream format)
     const requestBody = {
-      model: "nalang-medium-0826",
+      model: "qwen3-32b:latest",
       messages: messages,
-      stream: false,
+      stream: true,
       temperature: 0.7,
       max_tokens: 800,
       top_p: 0.35,
@@ -32,7 +32,7 @@ export default async function chatHandler(
     };
 
     const response = await fetch(
-      "https://www.gpt4novel.com/api/xiaoshuoai/ext/v1/chat/completions",
+      "http://60.12.103.229:3000/api/chat/completions",
       {
         method: "POST",
         headers: {
@@ -42,6 +42,8 @@ export default async function chatHandler(
         body: JSON.stringify(requestBody),
       }
     );
+    console.log('request:', requestBody);
+    console.log('response:', response);
 
     if (!response.ok) {
       const errorText = await response
@@ -60,6 +62,7 @@ export default async function chatHandler(
       res.status(500).json({ message: "Response body is null" });
       return;
     }
+    // console.log('Response body:', response.body);
 
     // Handle streaming response (SSE format) and accumulate all content
     const reader = response.body.getReader();

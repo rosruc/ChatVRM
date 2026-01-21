@@ -259,11 +259,15 @@ export default function VrmChat() {
         const fullMessage = data.content || ("" as string);
         console.log("fullMessage", fullMessage);
 
+        // Filter out <think></think> tags and their content
+        const cleanedMessage = fullMessage.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+        console.log("cleanedMessage", cleanedMessage);
+
         // Update the assistant message display
-        setAssistantMessage(fullMessage.trimStart());
+        setAssistantMessage(cleanedMessage.trimStart());
 
         // Split the complete message into sentences
-        const sentences = splitSentenceWithTags(fullMessage.trimStart());
+        const sentences = splitSentenceWithTags(cleanedMessage.trimStart());
         // "[neutral]你来了，把今天的报表给我看看" +
         //   "[story]柳如烟接过报表，坐在真皮办公椅上翻开查看，修长的双腿交叠在一起，黑色丝袜包裹的小腿轻轻晃动";
         console.log("sentences", sentences);
@@ -276,7 +280,7 @@ export default function VrmChat() {
           // Skip empty sentences or sentences with only punctuation/brackets
           if (
             !trimmedSentence ||
-            /^[\s\[\(\{「［（【『〈《〔｛«‹〘〚〛〙›»〕》〉』】）］」\}\)\]]+$/.test(
+            /^[\s\[\(\{「［（【『〈《〔｛«‹〘〚<>〛〙›»〕》〉』】）］」\}\)\]]+$/.test(
               trimmedSentence
             )
           ) {
@@ -302,7 +306,7 @@ export default function VrmChat() {
         }
 
         // アシスタントの返答をログに追加
-        const finalMessage = fullMessage.trim();
+        const finalMessage = cleanedMessage.trim();
         console.log("finalMessage", finalMessage);
         const messageLogAssistant: Message[] = [
           ...messageLog,

@@ -8,14 +8,14 @@ const BASE_URL = "http://60.12.103.229:8000";
 
 export const mapLabelToVoiceId = (label: string) => {
   switch (label) {
-    // case "neutral":
-    //   return "bfy-xj";
-    // case "happy":
-    //   return "bfy-xj-happy";
-    // case "angry":
-    //   return "bfy-xj-angry";
-    // case "rapture":
-    //   return "bfy-xj-breathy";
+    case "neutral":
+      return "bfy-xj";
+    case "happy":
+      return "bfy-xj-happy";
+    case "angry":
+      return "bfy-xj-angry";
+    case "rapture":
+      return "bfy-xj-sex";
     default:
       return "bfy-rapture2";
   }
