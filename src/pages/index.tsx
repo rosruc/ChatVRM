@@ -39,7 +39,7 @@ export default function Story() {
           }}
         />
       </div>
-      <RollDice />
+      {/* <RollDice /> */}
       <VrmChat />
       <Toaster />
     </MUDProvider>

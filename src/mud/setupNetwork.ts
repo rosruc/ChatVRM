@@ -57,15 +57,15 @@ export function createNetworkComponents() {
 export async function setupNetwork(gameAddress?: string) {
   const components = createNetworkComponents();
 
-  const solana = await initializeProgram(components);
-  if (!solana) {
-    throw new Error("Failed to initialize program");
-  }
+  // const solana = await initializeProgram(components);
+  // if (!solana) {
+  //   throw new Error("Failed to initialize program");
+  // }
 
   return {
     components,
     world,
-    solana,
+    // solana,
   };
 }
 
