@@ -4,20 +4,20 @@ import axios from "axios";
 import { ElevenLabsClient } from "elevenlabs";
 
 // const BASE_URL = 'http://127.0.0.1:8000';
-const BASE_URL = "https://9phv7qet4f4covrg-8000.container.x-gpu.com";
+const BASE_URL = "http://60.12.103.229:8000";
 
 export const mapLabelToVoiceId = (label: string) => {
   switch (label) {
-    case "neutral":
-      return "bfy-xj";
-    case "happy":
-      return "bfy-xj-happy";
-    case "angry":
-      return "bfy-xj-angry";
-    case "rapture":
-      return "bfy-xj-breathy";
+    // case "neutral":
+    //   return "bfy-xj";
+    // case "happy":
+    //   return "bfy-xj-happy";
+    // case "angry":
+    //   return "bfy-xj-angry";
+    // case "rapture":
+    //   return "bfy-xj-breathy";
     default:
-      return "bfy-xj-breathy";
+      return "bfy-rapture2";
   }
 };
 
@@ -27,11 +27,11 @@ export async function synthesizeVoice(
   speaker_y: number,
   style: TalkStyle,
   elevenLabsKey: string,
-  elevenLabsParam: ElevenLabsParam
+  elevenLabsParam: ElevenLabsParam,
 ) {
   // Set the API key for ElevenLabs API.
   // Do not use directly. Use environment variables.
-  const API_KEY = elevenLabsKey;
+  const API_KEY = "999"; // elevenLabsKey;
   // Set the ID of the voice to be used.
   const VOICE_ID = mapLabelToVoiceId(style); //elevenLabsParam.voiceId;
 

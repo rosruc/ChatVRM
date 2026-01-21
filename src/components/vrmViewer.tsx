@@ -6,7 +6,7 @@ export default function VrmViewer() {
   const { viewer } = useContext(ViewerContext);
 
   // const AVATAR_SAMPLE_B_VRM_URL = 'https://ipfs.io/ipfs/bafybeihx4xjb5mphocdq2os63g43pgnpi46ynolpmhln3oycoasywdnl3u';
-  const AVATAR_SAMPLE_B_VRM_URL = '/assets/vrm/model/AvatarSample_B.vrm';
+  const AVATAR_SAMPLE_B_VRM_URL = "/assets/vrm/model/Edelweiss_VRM-offline.vrm"; // Edelweiss_VRM-offline
 
   const canvasRef = useCallback(
     (canvas: HTMLCanvasElement) => {
@@ -42,7 +42,7 @@ export default function VrmViewer() {
         });
       }
     },
-    [viewer]
+    [viewer],
   );
 
   return (
