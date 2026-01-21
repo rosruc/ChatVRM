@@ -9,6 +9,7 @@ import {
   splitSentenceWithTags,
 } from "@/features/messages/messages";
 import { speakCharacter } from "@/features/messages/speakCharacter";
+import { CharacterRuntime } from "@/features/characterRuntime/characterRuntime";
 import { MessageInputContainer } from "@/components/messageInputContainer";
 import { SYSTEM_PROMPT } from "@/features/constants/systemPromptConstants";
 import {
@@ -36,6 +37,7 @@ import { ShapeKeyList } from "@/components/ShapeKeyList";
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 import { useToast } from "@/hooks/use-toast";
 import * as anchor from "@coral-xyz/anchor";
+import VrmControl from "@/components/VrmControl";
 
 const m_plus_2 = M_PLUS_2({
   variable: "--font-m-plus-2",
@@ -56,6 +58,15 @@ type LLMCallbackResult = {
 
 export default function VrmChat() {
   const { viewer } = useContext(ViewerContext);
+
+  const runtimeRef = useRef<CharacterRuntime | null>(null);
+  if (!runtimeRef.current) {
+    runtimeRef.current = new CharacterRuntime();
+  }
+
+  useEffect(() => {
+    runtimeRef.current?.setViewer(viewer);
+  }, [viewer]);
 
   // --- solana
   // const programRef = useRef<anchor.Program | null>(null);
@@ -126,7 +137,7 @@ export default function VrmChat() {
       // store separately to be backward compatible with local storage data
       window.localStorage.setItem("elevenLabsKey", elevenLabsKey);
     });
-  }, [systemPrompt, elevenLabsParam, chatLog]);
+  }, [systemPrompt, elevenLabsParam, chatLog, elevenLabsKey]);
 
   useEffect(() => {
     if (backgroundImage) {
@@ -197,6 +208,10 @@ export default function VrmChat() {
       if (newMessage == null) return;
 
       setChatProcessing(true);
+
+      // Enter waiting state immediately (covers LLM latency + slow network).
+      runtimeRef.current?.enterWaiting({ timeoutMs: 15000 });
+
       // Add user's message to chat log
       const messageLog: Message[] = [
         ...chatLog,
@@ -234,6 +249,7 @@ export default function VrmChat() {
 
       if (!response || !response.ok) {
         setChatProcessing(false);
+        runtimeRef.current?.exitWaiting();
         return;
       }
 
@@ -245,22 +261,6 @@ export default function VrmChat() {
 
         // Update the assistant message display
         setAssistantMessage(fullMessage.trimStart());
-        console.log("assistantMessage", assistantMessage);
-
-        // const aiTalks = textsToScreenplay(
-        //   [
-        //     fullMessage.trimStart() +
-        //       "[neutral]你来了，把今天的报表给我看看" +
-        //       "[story]柳如烟接过报表，坐在真皮办公椅上翻开查看，修长的双腿交叠在一起，黑色丝袜包裹的小腿轻轻晃动",
-        //   ],
-        //   koeiroParam
-        // );
-
-        // console.log("aiTalks", aiTalks);
-
-        // for (const aiTalk of aiTalks) {
-        //   handleSpeakAi(aiTalk, elevenLabsKey, elevenLabsParam);
-        // }
 
         // Split the complete message into sentences
         const sentences = splitSentenceWithTags(fullMessage.trimStart());
@@ -286,7 +286,18 @@ export default function VrmChat() {
           const aiTalks = textToScreenplay(trimmedSentence, koeiroParam);
           console.log("aiTalks", aiTalks);
           for (const aiTalk of aiTalks) {
-            handleSpeakAi(aiTalk, elevenLabsKey, elevenLabsParam);
+            const prepared = runtimeRef.current?.prepareForSpeech(aiTalk);
+            if (prepared) {
+              handleSpeakAi(
+                prepared.screenplay,
+                elevenLabsKey,
+                elevenLabsParam,
+                prepared.onStart,
+                prepared.onEnd
+              );
+            } else {
+              handleSpeakAi(aiTalk, elevenLabsKey, elevenLabsParam);
+            }
           }
         }
 
@@ -300,19 +311,22 @@ export default function VrmChat() {
 
         setChatLog(messageLogAssistant);
         setChatProcessing(false);
+
+        // Exit waiting once we have a response (speech may still be queued by speakCharacter).
+        runtimeRef.current?.exitWaiting();
       } catch (e) {
         setChatProcessing(false);
         console.error(e);
+
+        runtimeRef.current?.exitWaiting();
       }
     },
     [
       systemPrompt,
       chatLog,
       handleSpeakAi,
-      openAiKey,
       elevenLabsKey,
       elevenLabsParam,
-      openRouterKey,
       koeiroParam,
     ]
   );
@@ -358,21 +372,21 @@ export default function VrmChat() {
     localStorage.setItem("openRouterKey", newKey);
   };
 
-  const handleMockInputSubmit = useCallback(
-    (e: React.FormEvent) => {
-      e.preventDefault();
-      if (mockInputText.trim() && !chatProcessing) {
-        const aiTalks = textToScreenplay(mockInputText.trim(), koeiroParam);
+  // const handleMockInputSubmit = useCallback(
+  //   (e: React.FormEvent) => {
+  //     e.preventDefault();
+  //     if (mockInputText.trim() && !chatProcessing) {
+  //       const aiTalks = textToScreenplay(mockInputText.trim(), koeiroParam);
 
-        // 文ごとに音声を生成 & 再生、返答を表示
-        handleSpeakAi(aiTalks[0], elevenLabsKey, elevenLabsParam, () => {
-          setAssistantMessage(mockInputText);
-        });
-        setMockInputText("");
-      }
-    },
-    [mockInputText, chatProcessing, handleSendChat]
-  );
+  //       // 文ごとに音声を生成 & 再生、返答を表示
+  //       handleSpeakAi(aiTalks[0], elevenLabsKey, elevenLabsParam, () => {
+  //         setAssistantMessage(mockInputText);
+  //       });
+  //       setMockInputText("");
+  //     }
+  //   },
+  //   [mockInputText, chatProcessing, handleSendChat]
+  // );
 
   return (
     <div className={`${m_plus_2.variable} ${montserrat.variable}`}>
@@ -387,7 +401,8 @@ export default function VrmChat() {
       <MotionVRMAList />
       <VrmViewer />
       <ExpressionList />
-      {/* <ShapeKeyList /> */}
+      <ShapeKeyList />
+      <VrmControl />
       {/* Mock Speak Input for Testing */}
       {/* <div className="fixed top-4 right-4 z-30 bg-base border-2 border-yellow-400 rounded-8 p-12 shadow-lg">
         <div className="text-xs text-yellow-600 font-bold mb-4">
